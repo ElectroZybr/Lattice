@@ -1,0 +1,34 @@
+# Directories
+/build/
+/.cache/
+/build-*/
+/Debug/
+/Release/
+/legacy/
+/.xmake/
+
+# Obsidian
+**/.obsidian/
+AGENTS.md
+
+# Binaries and libraries
+*.exe
+*.dll
+*.so
+
+# CLion / JetBrains
+.idea/
+cmake-build-*/
+
+# VS Code
+.vscode/
+.command-buttons.json
+compile_commands.json
+
+# Runtime / logs
+*.log
+*.tmp
+*.temp
+
+# Python
+__pycache__/
