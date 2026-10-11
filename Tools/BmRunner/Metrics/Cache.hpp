@@ -7,10 +7,11 @@
 
 #include <Lattice/Tools/BmRunner/Metrics/PerfEvent.hpp>
 #include <Lattice/Tools/BmRunner/Stages.hpp>
+#include <Lattice/Kernel/Visibility.hpp>
 
 namespace Lattice::Benchmarks {
 
-class Cache : public MetricCapability<"Cache", Cache> {
+class LATTICE_API Cache : public MetricCapability<"Cache", Cache> {
 public:
     inline static constexpr auto l1dReads = defineMetric(
         "l1dReads",

@@ -4,6 +4,7 @@
 #include <vector>
 
 #include <Lattice/Kernel/Consts.hpp>
+#include <Lattice/Kernel/Visibility.hpp>
 
 namespace Lattice {
 
@@ -11,7 +12,7 @@ class NodeRegistry;
 class Blueprints;
 class NodeContext;
 
-class NodeQuery {
+class LATTICE_API NodeQuery {
     NodeRegistry& registry_;
     Blueprints& blueprints_;
     NodeContext& context_;

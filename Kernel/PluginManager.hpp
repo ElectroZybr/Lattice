@@ -6,12 +6,13 @@
 
 #include <Lattice/Kernel/DLLoader.hpp>
 #include <Lattice/Kernel/Plugin.hpp>
+#include <Lattice/Kernel/Visibility.hpp>
 
 namespace Lattice {
 
 struct PluginManifest;
 
-class PluginManager {
+class LATTICE_API PluginManager {
     static constexpr std::string_view tag = "PluginManager";
 public:
     PluginManager(Blueprints& blueprints, DLLoader& dlLoader)

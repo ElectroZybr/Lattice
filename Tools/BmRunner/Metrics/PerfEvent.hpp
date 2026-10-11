@@ -1,12 +1,14 @@
 #pragma once
 
+#include <Lattice/Kernel/Visibility.hpp>
+
 #include <cstdint>
 
 #include <linux/perf_event.h>
 
 namespace Lattice::Benchmarks {
 
-class PerfEvent {
+class LATTICE_API PerfEvent {
 public:
     struct Snapshot {
         uint64_t value = 0;

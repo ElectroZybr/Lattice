@@ -8,12 +8,13 @@
 #include <Lattice/Kernel/NodeContext.hpp>
 #include <Lattice/Kernel/NodeOps.hpp>
 #include <Lattice/Kernel/Exports.hpp>
+#include <Lattice/Kernel/Visibility.hpp>
 
 class NodeConfigure;
 
 namespace Lattice {
 
-class NodeSystem {
+class LATTICE_API NodeSystem {
 public:
     Blueprints& blueprints;
     NodeRegistry registry;

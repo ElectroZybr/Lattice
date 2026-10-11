@@ -4,6 +4,8 @@
 #include <span>
 #include <string_view>
 
+#include <Lattice/Kernel/Visibility.hpp>
+
 namespace Lattice::Benchmarks {
 
 /**
@@ -35,7 +37,7 @@ struct BigOResult {
     double error = 0;
 };
 
-BigOResult analyze(std::span<const ComplexityPoint> points);
-std::string_view complexityName(Complexity complexity) noexcept;
+LATTICE_API BigOResult analyze(std::span<const ComplexityPoint> points);
+LATTICE_API std::string_view complexityName(Complexity complexity) noexcept;
 
 }

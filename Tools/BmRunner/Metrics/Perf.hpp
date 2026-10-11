@@ -7,10 +7,11 @@
 
 #include <Lattice/Tools/BmRunner/Stages.hpp>
 #include <Lattice/Tools/BmRunner/Metrics/PerfEvent.hpp>
+#include <Lattice/Kernel/Visibility.hpp>
 
 namespace Lattice::Benchmarks {
 
-class Perf : public MetricCapability<"Perf", Perf> {
+class LATTICE_API Perf : public MetricCapability<"Perf", Perf> {
 public:
     inline static constexpr auto cycles = defineMetric(
         "cycles", Unit::Cycles, MetricFlags::PerIteration

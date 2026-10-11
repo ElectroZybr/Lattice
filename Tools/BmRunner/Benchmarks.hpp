@@ -6,6 +6,7 @@
 #include <Lattice/Tools/BmRunner/Bench.hpp>
 #include <Lattice/Tools/BmRunner/BenchTypes.hpp>
 #include <Lattice/Tools/Fixture.hpp>
+#include <Lattice/Kernel/Visibility.hpp>
 
 
 /**
@@ -78,7 +79,7 @@ struct Info {
     std::string_view description;
 };
 
-class Registrar {
+class LATTICE_API Registrar {
 public:
     Registrar(
         std::string_view group,
@@ -89,7 +90,7 @@ public:
     );
 };
 
-class GroupRegistrar {
+class LATTICE_API GroupRegistrar {
 public:
     GroupRegistrar(
         std::string_view group,
@@ -97,21 +98,21 @@ public:
     );
 };
 
-void run(std::string_view name);
-void runGroup(std::string_view group);
-void runAll();
+LATTICE_API void run(std::string_view name);
+LATTICE_API void runGroup(std::string_view group);
+LATTICE_API void runAll();
 
-std::vector<Info> list();
-std::vector<std::string_view> groups();
+LATTICE_API std::vector<Info> list();
+LATTICE_API std::vector<std::string_view> groups();
 
-void setSampleCallback(SampleCallback callback);
-void setResultCallback(ResultCallback callback);
-void setCompleteCallback(CompleteCallback callback);
+LATTICE_API void setSampleCallback(SampleCallback callback);
+LATTICE_API void setResultCallback(ResultCallback callback);
+LATTICE_API void setCompleteCallback(CompleteCallback callback);
 
-void disableSampleCallback();
-void disableResultCallback();
-void disableCompleteCallback();
-void disableCallbacks();
-void resetCallbacks();
+LATTICE_API void disableSampleCallback();
+LATTICE_API void disableResultCallback();
+LATTICE_API void disableCompleteCallback();
+LATTICE_API void disableCallbacks();
+LATTICE_API void resetCallbacks();
 
 }

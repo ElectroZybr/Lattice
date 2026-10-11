@@ -14,6 +14,7 @@
 #include <Lattice/Tools/LogMode.hpp>
 #include <Lattice/Tools/LogStyle.hpp>
 #include <Lattice/Tools/TextFormatter.hpp>
+#include <Lattice/Kernel/Visibility.hpp>
 
 
 struct LogEvent {
@@ -21,7 +22,7 @@ struct LogEvent {
     TextFormatter text;
 };
 
-class LoggerImpl {
+class LATTICE_API LoggerImpl {
 public:
     void print(Level level, const TextFormatter& text, bool isScopeFinal = false);
     void printBlank();
@@ -73,7 +74,7 @@ private:
 };
 
 
-class LogSystem {
+class LATTICE_API LogSystem {
 public:
     using SinkId = uint64_t;
     using Sink = std::function<void(const LogEvent&)>;

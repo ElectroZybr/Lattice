@@ -4,10 +4,11 @@
 #include <vector>
 
 #include <Lattice/Kernel/Consts.hpp>
+#include <Lattice/Kernel/Visibility.hpp>
 
 namespace Lattice {
 
-class DependencyGraph {
+class LATTICE_API DependencyGraph {
 public:
     void add(NodeId dependent, NodeId dependency);
     void clearDependencies(NodeId node);

@@ -5,6 +5,7 @@
 #include <vector>
 
 #include <Lattice/Kernel/Consts.hpp>
+#include <Lattice/Kernel/Visibility.hpp>
 #include <Lattice/Tools/ObjectRegistry.hpp>
 
 
@@ -48,7 +49,7 @@ struct ContextResolution {
     }
 };
 
-class NodeContext {
+class LATTICE_API NodeContext {
     NodeRegistry& registry_;
 
     RoleRegistry roles_;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Lattice/Kernel/Consts.hpp>
+#include <Lattice/Kernel/Visibility.hpp>
 
 #include <thread>
 #include <atomic>
@@ -14,7 +15,7 @@ enum class ServiceLaunch {
     Host
 };
 
-struct ServiceAPI : public Lattice::Component {
+struct LATTICE_API ServiceAPI : public Lattice::Component {
     ServiceAPI() = default;
     ServiceAPI(const ServiceAPI&) = delete;
     ServiceAPI& operator=(const ServiceAPI&) = delete;

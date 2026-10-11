@@ -12,6 +12,7 @@
 #include <Lattice/Kernel/NodeSystem.hpp>
 #include <Lattice/Kernel/TreeView.hpp>
 #include <Lattice/Tools/TypeName.hpp>
+#include <Lattice/Kernel/Visibility.hpp>
 
 
 // global types
@@ -430,7 +431,7 @@ private:
 };
 
 
-class NodeConfigure {
+class LATTICE_API NodeConfigure {
     Lattice::NodeId id_;
     Lattice::NodeSystem& nodeSystem_;
 

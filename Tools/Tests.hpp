@@ -7,6 +7,7 @@
 #include <utility>
 
 #include <Lattice/Tools/LogMode.hpp>
+#include <Lattice/Kernel/Visibility.hpp>
 #include "Lattice/Tools/Fixture.hpp"
 
 
@@ -43,7 +44,7 @@ struct TestCase {
     std::unique_ptr<Fixture> (*createFixture)();
 };
 
-class Test {
+class LATTICE_API Test {
 public:
     static Test& instance();
 
@@ -78,7 +79,7 @@ public:
     }
 };
 
-void testRequire(bool condition, const char* expression, const char* file, int line);
-void testCheck(bool condition, const char* expression, const char* file, int line);
+LATTICE_API void testRequire(bool condition, const char* expression, const char* file, int line);
+LATTICE_API void testCheck(bool condition, const char* expression, const char* file, int line);
 
 } // namespace Lattice

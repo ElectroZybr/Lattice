@@ -7,6 +7,7 @@
 
 #include <Lattice/Kernel/Consts.hpp>
 #include <Lattice/Kernel/Node.hpp>
+#include <Lattice/Kernel/Visibility.hpp>
 
 namespace Lattice {
 
@@ -34,7 +35,7 @@ struct TreeNodeInfo {
 
 // Lazy pre-order traversal. Structural mutation invalidates active iterators,
 // just like mutation of a standard container invalidates its iterators.
-class TreeTraversal {
+class LATTICE_API TreeTraversal {
 public:
     class Iterator {
     public:
@@ -85,7 +86,7 @@ private:
 // Read-only access to the runtime tree. The view deliberately exposes stable
 // ids and copied values, never Node references that could be invalidated by a
 // later tree mutation.
-class TreeView {
+class LATTICE_API TreeView {
 public:
     TreeView() = default;
     explicit TreeView(NodeSystem& nodes) : nodes_(&nodes) {}

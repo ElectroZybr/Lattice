@@ -1,3 +1,5 @@
+local codegen_dir = os.scriptdir()
+
 rule("lattice.plugin_codegen")
     on_load(function (target)
         local output = path.join(target:autogendir(), "plugin_register.cpp")
@@ -12,7 +14,7 @@ rule("lattice.plugin_codegen")
         local flagsfile = output .. ".flags.json"
         os.mkdir(path.directory(output))
         io.writefile(flagsfile, json.encode(flags))
-        os.vrunv("python3", {path.join(os.projectdir(), "Lattice/Tools/Generators/generate_plugin.py"),
+        os.vrunv("python3", {path.join(codegen_dir, "generate_plugin.py"),
             "--plugin", target:scriptdir(), "--output", output,
             "--flags-json", flagsfile})
     end)

@@ -14,11 +14,12 @@
 
 #include <Lattice/Kernel/TableAPI.hpp>
 #include <Lattice/Tools/TextFormatter.hpp>
+#include <Lattice/Kernel/Visibility.hpp>
 
 
 namespace Lattice {
 
-class TableFormatter {
+class LATTICE_API TableFormatter {
 public:
     enum class Rules : uint8_t {
         None = 0,

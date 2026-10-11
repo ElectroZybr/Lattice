@@ -7,6 +7,7 @@
 
 #include <Lattice/Tools/TypeName.hpp>
 #include <Lattice/Kernel/Blueprints.hpp>
+#include <Lattice/Kernel/Visibility.hpp>
 
 namespace Lattice {
 
@@ -30,13 +31,13 @@ struct PluginCatalog {
     std::vector<BlueprintId> provided;
 };
 
-std::vector<CompileDep>& compileDepSink();
-std::vector<PluginCatalog>& pluginCatalogs();
-bool check(std::string_view name, const Blueprints& blueprints);
-std::vector<std::string> uniqueList(std::string_view name, const Blueprints& blueprints);
-std::vector<std::string> printUniqueList(std::string_view name, const Blueprints& blueprints);
-void printCompositionTree(std::string_view name, const Blueprints& blueprints);
-void recordPluginCatalog(PluginCatalog catalog);
+LATTICE_API std::vector<CompileDep>& compileDepSink();
+LATTICE_API std::vector<PluginCatalog>& pluginCatalogs();
+LATTICE_API bool check(std::string_view name, const Blueprints& blueprints);
+LATTICE_API std::vector<std::string> uniqueList(std::string_view name, const Blueprints& blueprints);
+LATTICE_API std::vector<std::string> printUniqueList(std::string_view name, const Blueprints& blueprints);
+LATTICE_API void printCompositionTree(std::string_view name, const Blueprints& blueprints);
+LATTICE_API void recordPluginCatalog(PluginCatalog catalog);
 
 inline constexpr std::string_view tag = "Requirements";
 

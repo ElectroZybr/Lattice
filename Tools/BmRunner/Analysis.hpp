@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <Lattice/Tools/BmRunner/BenchTypes.hpp>
+#include <Lattice/Kernel/Visibility.hpp>
 
 
 namespace Lattice::Benchmarks {
@@ -73,7 +74,7 @@ struct BenchResult {
     std::vector<AnalysisResult> analysis;
 };
 
-class Analysis {
+class LATTICE_API Analysis {
     std::vector<AnalysisRequest> requests_;
 
 public:

@@ -1,12 +1,13 @@
 #pragma once
 
 #include <Lattice/Kernel/Consts.hpp>
+#include <Lattice/Kernel/Visibility.hpp>
 
 namespace Lattice {
 
 class NodeSystem;
 
-class NodeFactory {
+class LATTICE_API NodeFactory {
     NodeSystem& nodeSystem_;
 
     NodeId createNode(

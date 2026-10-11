@@ -5,6 +5,7 @@
 #include <vector>
 
 #include <Lattice/Kernel/Consts.hpp>
+#include <Lattice/Kernel/Visibility.hpp>
 
 class NodeBuild;
 
@@ -13,7 +14,7 @@ namespace Lattice {
 class NodeFactory;
 class NodeSystem;
 
-class Builder {
+class LATTICE_API Builder {
 public:
     class Batch {
     public:

@@ -5,12 +5,13 @@
 #include <vector>
 
 #include <Lattice/Kernel/Consts.hpp>
+#include <Lattice/Kernel/Visibility.hpp>
 
 namespace Lattice {
 
 class NodeSystem;
 
-class NodeOps {
+class LATTICE_API NodeOps {
     NodeSystem& nodeSystem_;
 
 public:

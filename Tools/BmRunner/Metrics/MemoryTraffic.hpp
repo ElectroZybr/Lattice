@@ -8,6 +8,7 @@
 #include <utility>
 
 #include <Lattice/Tools/BmRunner/Stages.hpp>
+#include <Lattice/Kernel/Visibility.hpp>
 
 namespace Lattice::Benchmarks {
 
@@ -24,7 +25,7 @@ public:
     virtual uint64_t end() = 0;
 };
 
-class MemoryTraffic : public MetricCapability<"MemoryTraffic", MemoryTraffic> {
+class LATTICE_API MemoryTraffic : public MetricCapability<"MemoryTraffic", MemoryTraffic> {
     using Clock = std::chrono::steady_clock;
 
     std::unique_ptr<MemoryTrafficBackend> backend_;

@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include <Lattice/Kernel/Visibility.hpp>
+
 namespace Lattice::SystemInfo {
 
 enum class CpuArch : uint8_t {
@@ -159,11 +161,11 @@ struct MachineInfo {
     std::vector<GpuInfo> gpus;
 };
 
-std::vector<ProcessorInfo> collectCPU();
-std::vector<GpuInfo> collectGpus();
-MemoryInfo collectMemory();
-OsInfo collectOS();
-BuildInfo collectBuild();
+LATTICE_API std::vector<ProcessorInfo> collectCPU();
+LATTICE_API std::vector<GpuInfo> collectGpus();
+LATTICE_API MemoryInfo collectMemory();
+LATTICE_API OsInfo collectOS();
+LATTICE_API BuildInfo collectBuild();
 
 inline MachineInfo collectMachineInfo() {
     MachineInfo info;

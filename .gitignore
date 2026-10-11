@@ -29,6 +29,7 @@ compile_commands.json
 *.log
 *.tmp
 *.temp
+*.lock
 
 # Python
 __pycache__/

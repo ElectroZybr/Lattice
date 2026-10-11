@@ -7,10 +7,11 @@
 
 #include <Lattice/Tools/BmRunner/Metrics/MemoryTraffic.hpp>
 #include <Lattice/Tools/BmRunner/Metrics/PerfEvent.hpp>
+#include <Lattice/Kernel/Visibility.hpp>
 
 namespace Lattice::Benchmarks {
 
-class AmdDfMemoryTraffic : public MemoryTrafficBackend {
+class LATTICE_API AmdDfMemoryTraffic : public MemoryTrafficBackend {
     static constexpr size_t CounterCount = 8;
 
     std::array<PerfEvent, CounterCount> events_;
