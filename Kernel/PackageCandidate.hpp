@@ -97,6 +97,7 @@ enum class LoadStatus {
 };
 
 using PackageComposeFn = void(*)(::NodeBuild);
+using PackageConfigureFn = void(*)(::NodeConfigure);
 
 struct PackageCandidate {
     std::filesystem::path path;

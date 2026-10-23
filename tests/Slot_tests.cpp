@@ -32,16 +32,16 @@ struct RollbackChild {
 };
 
 ObjectBuild<SlotImplA> composeA(::NodeBuild& branch) {
-    return branch.emplace<SlotImplA, SlotAPI>("impl");
+    return branch.construct<SlotImplA, SlotAPI>();
 }
 
 ObjectBuild<SlotImplB> composeB(::NodeBuild& branch) {
-    return branch.emplace<SlotImplB, SlotAPI>("impl");
+    return branch.construct<SlotImplB, SlotAPI>();
 }
 
 ObjectBuild<SlotWindowImpl> composeWindow(::NodeBuild& branch) {
     branch.emplace<SlotInput>("input");
-    return branch.emplace<SlotWindowImpl, SlotAPI>("window");
+    return branch.construct<SlotWindowImpl, SlotAPI>();
 }
 
 ObjectBuild<SlotImplA> composeThrowing(::NodeBuild& branch) {
@@ -79,8 +79,6 @@ TEST(Slot_ChoiceReplacesImpl, RuntimeFixture,
     REQUIRE(slot->id() == 7);
     REQUIRE(nodes.query.collect(slot.id(), nodes.blueprints.id<SlotInput>()).size() == 1);
 
-    REQUIRE(!slot.choice("Slot::B", composeB));
-    nodes.ops.maintain();
     REQUIRE(slot.choice("Slot::B", composeB));
 
     REQUIRE(slot->id() == 2);
@@ -135,8 +133,6 @@ TEST(Slot_FocusTracksImplementation, RuntimeFixture,
     REQUIRE(focus.id() == slot.id());
     REQUIRE(focus->id() == 1);
 
-    REQUIRE(!slot.choice("Slot::B", composeB));
-    fixture.run_ctx.nodes.ops.maintain();
     REQUIRE(slot.choice("Slot::B", composeB));
 
     REQUIRE(focus.id() == slot.id());
@@ -160,7 +156,7 @@ TEST(Slot_AbstractChoicePreservesContents, RuntimeFixture) {
     auto* previous = slot.get();
     REQUIRE(slotThrows([&] { slot.choice(nodes.blueprints.id<SlotAPI>()); }));
     REQUIRE(slot.get() == previous);
-    REQUIRE(nodes.registry.children(slot.id()).size() == 2);
+    REQUIRE(nodes.registry.children(slot.id()).size() == 1);
 }
 
 TEST(Slot_CompositionFailureClearsChildren, RuntimeFixture) {

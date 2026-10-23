@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <span>
 #include <string>
 #include <vector>
@@ -98,6 +99,15 @@ public:
     NodeId resolve(ContextScopeId scope, RoleId role) const;
     NodeId resolve(RoleId role) const;
 
+    // changes
+    /// Call `callback` lazily (in maintain) after any change of `role`, while `owner`
+    /// with this generation is alive and active. Dead owners are dropped.
+    void observe(RoleId role, NodeId owner, uint64_t generation, std::function<void()> callback);
+    /// Deliver the changes accumulated since the last call, once per changed role.
+    void notifyChanges();
+    /// Changes are waiting for notifyChanges().
+    bool pending() const noexcept { return !changed_.empty(); }
+
     // helpers
     ContextScopeId root() const noexcept { return rootScope_; }
     size_t scopeCount() const noexcept { return scopes_.size(); }
@@ -107,6 +117,16 @@ public:
     bool hasRole(RoleId id) const { return roles_.get(id) != nullptr; }
 
 private:
+    struct Observation {
+        RoleId role = InvalidRoleId;
+        NodeId owner = InvalidNodeId;
+        uint64_t generation = 0;
+        std::function<void()> callback;
+    };
+    std::vector<RoleId> changed_;
+    std::vector<Observation> observers_;
+
+    void changed(RoleId role);
     ContextEntry* findEntry(ContextScopeId scope, RoleId role);
     const ContextEntry* findEntry(ContextScopeId scope, RoleId role) const;
     ContextEntry& requireEntry(ContextScopeId scope, RoleId role);

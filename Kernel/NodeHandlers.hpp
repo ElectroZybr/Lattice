@@ -127,7 +127,8 @@ public:
     bool choice(BlueprintId implementation);
     /// Register a named composition inferred from an ordinary function's return handle.
     /// Reusing a name with another function/API is an error.
-    template<class Result> bool choice(std::string_view name, Result (*compose)(::NodeBuild&));
+    template<class Result> bool choice(std::string_view name, Result (*compose)(::NodeBuild&),
+        void (*configure)(::NodeConfigure) = nullptr);
 };
 
 
@@ -160,6 +161,17 @@ public:
     /// Resolve the current selection into a non-owning, generation-checked snapshot.
     /// Throws for a missing/ambiguous role or an expired scope.
     Ref<T> ref() const;
+
+    /// Select a live compatible object as this scope's explicit target (runtime switch,
+    /// e.g. the active controller under the cursor). Existing references are not rebound.
+    template<class U> void set(const Ref<U>& target);
+    /// Select by object: the node of `object` among the objects this scope may focus
+    /// (its own subtree and visible candidates). Error when it is none of them.
+    void set(T* object);
+
+    /// Lazily (in maintain) call callback(owner&, focus) after this role changes, while
+    /// `owner` is alive. The way to react to a Context change without polling.
+    template<class U, class F> void onChange(const Ref<U>& owner, F callback) const;
 
     /// Remove this scope's explicit target and restore normal inherited resolution.
     void reset();

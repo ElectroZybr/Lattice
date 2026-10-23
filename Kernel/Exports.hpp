@@ -273,6 +273,15 @@ public:
         return id;
     }
 
+    /// Live exports owned by a node, in registration order (aliases excluded).
+    std::vector<ExportId> owned(NodeId owner) const {
+        std::vector<ExportId> result;
+        for (ExportId id = 0; id < exports_.size(); ++id)
+            if (exports_[id].owner == owner)
+                result.push_back(id);
+        return result;
+    }
+
     ExportId find(NodeId owner, std::string_view name) const {
         const auto it = index_.find(ExportKey{owner, std::string(name)});
         return it == index_.end() ? InvalidExportId : it->second;

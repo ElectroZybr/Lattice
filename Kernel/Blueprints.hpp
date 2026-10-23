@@ -12,6 +12,7 @@
 #include <Lattice/Tools/ObjectRegistry.hpp>
 
 class NodeBuild;
+class NodeConfigure;
 
 namespace Lattice {
 
@@ -22,6 +23,8 @@ struct BlueprintOps {
 
 struct BlueprintMeta {
     void (*compose)(::NodeBuild) = nullptr;
+    /// Repeatable wiring of the composed branch with the current tree (optional).
+    void (*configure)(::NodeConfigure) = nullptr;
     // Slot composition owns a subtree and returns the node exposing its API.
     std::function<NodeId(::NodeBuild&)> composeSlot;
     void* (*allocate)() = nullptr;
@@ -42,7 +45,8 @@ class LATTICE_API Blueprints : public ObjectRegistry<Blueprint, BlueprintId, std
     using Base = ObjectRegistry<Blueprint, BlueprintId, std::string>;
 
 public:
-    BlueprintId addComposition(std::string_view name, void (*compose)(::NodeBuild));
+    BlueprintId addComposition(std::string_view name, void (*compose)(::NodeBuild),
+        void (*configure)(::NodeConfigure) = nullptr);
 
     BlueprintId add(
         std::string_view name,

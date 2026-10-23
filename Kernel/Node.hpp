@@ -23,7 +23,8 @@ struct Node {
     std::string name;
     NodeId parent = InvalidNodeId;
     BlueprintId bp = InvalidBlueprintId;
-    NodeId relation = InvalidNodeId;
+    /// Slot: the selected implementation (composition), independent of the object's type.
+    BlueprintId choice = InvalidBlueprintId;
     NodeKind kind = NodeKind::Folder;
     NodeState state = NodeState::Active;
     RuntimeObject object;

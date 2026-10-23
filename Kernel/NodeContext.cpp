@@ -133,6 +133,8 @@ void NodeContext::destroyScope(ContextScopeId scope) {
     if (rootScope_ == scope)
         rootScope_ = InvalidContextScopeId;
 
+    for (const auto& entry : scopes_.require(scope).roles)
+        changed(entry.role);
     scopes_.destroy(scope);
 }
 
@@ -142,8 +144,10 @@ void NodeContext::addCandidate(ContextScopeId scopeId, RoleId roleId, NodeId tar
 
     auto& entry = requireEntry(scopeId, roleId);
 
-    if (std::ranges::find(entry.candidates, target) == entry.candidates.end())
+    if (std::ranges::find(entry.candidates, target) == entry.candidates.end()) {
         entry.candidates.push_back(target);
+        changed(roleId);
+    }
 }
 
 void NodeContext::removeCandidate(ContextScopeId scopeId, RoleId roleId, NodeId target) {
@@ -161,6 +165,7 @@ void NodeContext::removeCandidate(ContextScopeId scopeId, RoleId roleId, NodeId 
         if (it->target == InvalidNodeId && it->candidates.empty())
             scope.roles.erase(it);
 
+        changed(roleId);
         return;
     }
 }
@@ -178,7 +183,11 @@ void NodeContext::set(ContextScopeId scopeId, RoleId roleId, NodeId target) {
             roleName(roleId)
         );
 
-    requireEntry(scopeId, roleId).target = target;
+    auto& entry = requireEntry(scopeId, roleId);
+    if (entry.target != target) {
+        entry.target = target;
+        changed(roleId);
+    }
 }
 
 void NodeContext::reset(ContextScopeId scopeId, RoleId roleId) {
@@ -188,6 +197,8 @@ void NodeContext::reset(ContextScopeId scopeId, RoleId roleId) {
         if (it->role != roleId)
             continue;
 
+        if (it->target != InvalidNodeId)
+            changed(roleId);
         it->target = InvalidNodeId;
 
         if (it->candidates.empty())
@@ -292,7 +303,8 @@ void NodeContext::removeTarget(NodeId target) {
             continue;
 
         for (auto it = scope->roles.begin(); it != scope->roles.end();) {
-            std::erase(it->candidates, target);
+            if (std::erase(it->candidates, target) || it->target == target)
+                changed(it->role);
 
             if (it->target == target)
                 it->target = InvalidNodeId;
@@ -303,6 +315,35 @@ void NodeContext::removeTarget(NodeId target) {
                 ++it;
         }
     }
+}
+
+void NodeContext::changed(RoleId role) {
+    if (std::ranges::find(changed_, role) == changed_.end())
+        changed_.push_back(role);
+}
+
+void NodeContext::observe(RoleId role, NodeId owner, uint64_t generation, std::function<void()> callback) {
+    observers_.push_back({role, owner, generation, std::move(callback)});
+}
+
+void NodeContext::notifyChanges() {
+    if (changed_.empty())
+        return;
+    std::vector<RoleId> roles;
+    roles.swap(changed_);
+    const auto alive = [this](const Observation& observer) {
+        const auto* node = registry_.get(observer.owner);
+        return node && node->state == NodeState::Active &&
+            registry_.generation(observer.owner) == observer.generation;
+    };
+    std::erase_if(observers_, [&](const Observation& observer) { return !alive(observer); });
+    // Copy before calling: callbacks may observe or change Context again.
+    std::vector<std::function<void()>> calls;
+    for (const auto& observer : observers_)
+        if (std::ranges::find(roles, observer.role) != roles.end())
+            calls.push_back(observer.callback);
+    for (auto& call : calls)
+        call();
 }
 
 }

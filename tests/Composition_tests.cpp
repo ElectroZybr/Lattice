@@ -554,7 +554,7 @@ struct ViewController {
     ViewAPI& view;
 };
 ObjectBuild<ViewController> composeController(::NodeBuild& slot) {
-    return slot.emplace<ViewController>("controller", slot.owner<ViewAPI>());
+    return slot.construct<ViewController>(slot.owner<ViewAPI>());
 }
 }
 
@@ -595,5 +595,38 @@ TEST(Composition_OwnerRequiresAnObjectAbove, RuntimeFixture) {
     try { branch.owner<ViewAPI>(); }
     catch (const ExceptionBase&) { thrown = true; }
     REQUIRE(thrown);
+}
+}
+
+namespace Lattice {
+namespace {
+struct Watcher { int calls = 0; NodeId seen = InvalidNodeId; };
+}
+TEST(Composition_FocusChangeNotifiesLazilyInMaintain, RuntimeFixture,
+    "Смена Focus доставляется наблюдателю в maintain, а не сразу; наблюдатель снимается вместе с владельцем.") {
+    auto& nodes = fixture.run_ctx.nodes;
+    auto root = fixture.build(fixture.root);
+    auto branch = root.branch("window");
+    auto first = branch.branch("a").emplace<ViewCamera>("camera");
+    auto second = branch.branch("b").emplace<ViewCamera>("camera");
+    auto watcher = root.emplace<Watcher>("watcher");
+    auto active = branch.focus<ViewCamera>();
+    active.onChange(watcher.ref(), [](Watcher& self, const Focus<ViewCamera>& focus) {
+        ++self.calls;
+        self.seen = focus.id();
+    });
+
+    active.set(first.ref());          // owned by the branch, not a visible candidate
+    active.set(second.ref());
+    REQUIRE(watcher->calls == 0);
+    nodes.ops.maintain();
+    REQUIRE(watcher->calls == 1);
+    REQUIRE(watcher->seen == second.id());
+    nodes.ops.maintain();
+    REQUIRE(watcher->calls == 1);
+
+    nodes.ops.destroyBranch(watcher.id());
+    active.reset();
+    nodes.ops.maintain();             // owner is gone: no call, no crash
 }
 }

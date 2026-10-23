@@ -21,14 +21,14 @@ struct ComposedConsumer {
 };
 ObjectBuild<ComposedA> composeA(NodeBuild& run) {
     auto state = run.emplace<ComposedState>("state", 1);
-    auto object = run.emplace<ComposedA>("backend", state, run.require<Gate>("gate"));
+    auto object = run.construct<ComposedA, ComposedAPI>(state, run.require<Gate>("gate"));
     object.onRetire(&ComposedA::stop);
     object.readyToDestroy(&ComposedA::stopped);
     return object;
 }
-ObjectBuild<ComposedB> composeB(NodeBuild& run) { return run.emplace<ComposedB>("backend"); }
+ObjectBuild<ComposedB> composeB(NodeBuild& run) { return run.construct<ComposedB, ComposedAPI>(); }
 Ref<ComposedAPI> composeAPI(NodeBuild& run) {
-    auto object = run.emplace<ComposedB, ComposedAPI>("backend");
+    auto object = run.construct<ComposedB, ComposedAPI>();
     return {object.get(), object.runtime(), object.id(), object.generation()};
 }
 ObjectBuild<ComposedB> composeFail(NodeBuild& run) {
@@ -53,12 +53,12 @@ TEST(SlotComposition_InferredAPIAndSnapshots, RuntimeFixture) {
     REQUIRE(slot.choice("SlotExample::A", composeA));
     REQUIRE(slot->value() == 1);
     auto ref = slot.ref();
-    REQUIRE(ref.id() != slot.id());
+    REQUIRE(ref.id() == slot.id());
     REQUIRE(root.require<ComposedAPI>("renderer").id() == ref.id());
     REQUIRE(root.find<ComposedAPI>("renderer").id() == ref.id());
     REQUIRE(root.collect<ComposedAPI>().size() == 1);
     REQUIRE(root.focus<ComposedAPI>().ref().id() == ref.id());
-    REQUIRE(fixture.run_ctx.nodes.registry.require(slot.id()).object.ptr == nullptr);
+    REQUIRE(fixture.run_ctx.nodes.registry.require(slot.id()).object.ptr != nullptr);
     const auto count = fixture.run_ctx.nodes.registry.children(slot.id()).size();
     REQUIRE(slot.choice("SlotExample::A", composeA));
     REQUIRE(slot.ref().id() == ref.id());
@@ -83,7 +83,8 @@ TEST(SlotComposition_RetiresConsumersAndWaitsWithoutBlocking, RuntimeFixture) {
     REQUIRE(nodes.registry.require(consumer.id()).state == NodeState::Retiring);
     REQUIRE(gate->stops == 1);
     nodes.ops.maintain();
-    REQUIRE(nodes.registry.get(consumer.id()));
+    // The consumer is gone; the slot's own object still waits for its gate.
+    REQUIRE(!nodes.registry.get(consumer.id()));
     REQUIRE(!slot.choice("SlotExample::B", composeB));
     REQUIRE(gate->stops == 1);
     gate->ready = true;
@@ -102,8 +103,6 @@ TEST(SlotComposition_FailureLeavesEmptyRecoverableSlot, RuntimeFixture) {
     root.emplaceShared<Gate>("gate");
     auto slot = root.addSlot<ComposedAPI>();
     REQUIRE(slot.choice("SlotExample::A", composeA));
-    REQUIRE(!slot.choice("SlotExample::Fail", composeFail));
-    nodes.ops.maintain();
     REQUIRE(failsSlotComposition([&] { slot.choice("SlotExample::Fail", composeFail); }));
     REQUIRE(!slot);
     REQUIRE(nodes.registry.children(slot.id()).empty());

@@ -190,6 +190,41 @@ public:
         return AvailableExports{nodeSystem_, from};
     }
 
+    /// Exports owned by one node; for listing a subtree's params and actions.
+    std::vector<Lattice::ExportId> owned(Lattice::NodeId node) const {
+        return nodeSystem_->exports.owned(node);
+    }
+
+    std::optional<Lattice::ExportKind> kind(Lattice::ExportId id) const {
+        const Lattice::Export* entry = nodeSystem_->exports.get(id);
+        return entry ? std::optional{entry->kind} : std::nullopt;
+    }
+
+    std::optional<Lattice::Value> value(Lattice::ExportId id) const {
+        const Lattice::ResolvedExport resolved = nodeSystem_->exports.resolve(id);
+        return resolved.get ? std::optional{resolved.get(resolved.object)} : std::nullopt;
+    }
+
+    std::span<const Lattice::Value> argumentTypes(Lattice::ExportId id) const {
+        return nodeSystem_->exports.resolve(id).argumentTypes;
+    }
+
+    size_t requiredArguments(Lattice::ExportId id) const {
+        return nodeSystem_->exports.resolve(id).requiredArguments;
+    }
+
+    /// Whether the export is visible by name from the root scope (declared global).
+    bool global(Lattice::ExportId id) const {
+        const Lattice::Export* entry = nodeSystem_->exports.get(id);
+        if (!entry)
+            return false;
+        const Lattice::RoleId role = nodeSystem_->context.findRole(entry->name);
+        if (role == Lattice::InvalidRoleId)
+            return false;
+        const auto resolution = nodeSystem_->context.resolveInfo(nodeSystem_->context.root(), role);
+        return std::ranges::find(resolution.candidates, entry->owner) != resolution.candidates.end();
+    }
+
     std::string_view name(const Lattice::VisibleExport& entry) const {
         return nodeSystem_->context.roleName(entry.role);
     }
@@ -334,6 +369,15 @@ public:
                 }, std::move(context.values));
             }, &context);
         return Lattice::ObjectBuild<T>{Lattice::detail::reference<T>(nodeSystem_, id_)};
+    }
+
+    /// construct() and publish the branch's object as a Context candidate, like emplaceShared.
+    template<class T, class... APIs, class... Args>
+    Lattice::ObjectBuild<T> constructShared(Args&&... args) {
+        auto object = construct<T, APIs...>(std::forward<Args>(args)...);
+        nodeSystem_.factory.share(id_, nodeSystem_.blueprints.id<T>());
+        (nodeSystem_.factory.share(id_, nodeSystem_.blueprints.id<APIs>()), ...);
+        return object;
     }
 
     template<class T, class... APIs, class... Args>
@@ -563,6 +607,167 @@ private:
     }
 };
 
+/**
+ * @brief Wiring of a composed branch with the current tree.
+ *
+ * A package may export `extern "C" void configure(NodeConfigure root)` next to compose
+ * (a slot variant passes it to choice). The runtime calls it after compose and again
+ * in maintain when the branch subtree changes, a node it looked up retires, or Context
+ * changes. It only queries and assigns plain values to objects: it never creates nodes.
+ * Results are not dependencies: a retiring child is dropped by the next configure
+ * (before it is destroyed) instead of retiring its consumer.
+ */
+template<class T>
+struct ConfiguredNode;
+
+class NodeConfigure {
+    Lattice::NodeId id_ = Lattice::InvalidNodeId;
+    Lattice::NodeSystem* nodeSystem_ = nullptr;
+    Lattice::NodeId observer_ = Lattice::InvalidNodeId;
+
+public:
+    NodeConfigure(Lattice::NodeId id, Lattice::NodeSystem& nodeSystem, Lattice::NodeId observer)
+        : id_(id), nodeSystem_(&nodeSystem), observer_(observer) {}
+
+    Lattice::NodeId id() const noexcept { return id_; }
+
+    template<class T>
+    using Entry = ConfiguredNode<T>;
+
+    /// Own object of this node (the branch object or a slot implementation).
+    template<class T>
+    T* self() const { return object<T>(id_); }
+
+    template<class T>
+    std::vector<T*> children() const { return objects(childNodes<T>()); }
+
+    /// The subtree below this node (the node itself excluded).
+    template<class T>
+    std::vector<T*> collect() const { return objects(collectNodes<T>()); }
+
+    template<class T>
+    std::vector<Entry<T>> childNodes() const {
+        std::vector<Entry<T>> result;
+        for (Lattice::NodeId child : nodeSystem_->registry.children(id_))
+            if (T* found = object<T>(child))
+                result.push_back({found, at(child)});
+        return result;
+    }
+
+    template<class T>
+    std::vector<Entry<T>> collectNodes() const {
+        std::vector<Entry<T>> result;
+        const auto type = nodeSystem_->blueprints.find<T>();
+        if (type == Lattice::InvalidBlueprintId)
+            return result;
+        for (Lattice::NodeId node : nodeSystem_->query.collect(id_, type))
+            if (node != id_)
+                if (T* found = object<T>(node))
+                    result.push_back({found, at(node)});
+        return result;
+    }
+
+    /// Environment lookup by name, as in composition; nullptr when absent.
+    template<class T>
+    T* find(std::string_view instance = Lattice::DefaultInstanceName) const {
+        const auto type = nodeSystem_->blueprints.find<T>();
+        if (type == Lattice::InvalidBlueprintId)
+            return nullptr;
+        return observed<T>(nodeSystem_->query.find(id_, type, instance));
+    }
+
+    template<class T>
+    T& require(std::string_view instance = Lattice::DefaultInstanceName) const {
+        if (T* found = find<T>(instance))
+            return *found;
+        throw Lattice::Exception<NodeConfigure>("'{}' named '{}' not found from node #{}",
+            Lattice::typeKey<T>(), instance, id_);
+    }
+
+    /// Current Context choice for this node: nullptr when missing, error when ambiguous.
+    template<class T>
+    T* focus(std::string_view role = Lattice::typeKey<T>()) const {
+        const auto roleId = nodeSystem_->context.findRole(role);
+        if (roleId == Lattice::InvalidRoleId)
+            return nullptr;
+        const auto resolution = nodeSystem_->context.resolveInfo(nodeSystem_->context.nearestScope(id_), roleId);
+        if (resolution.state == Lattice::ContextResolutionState::Ambiguous)
+            throw Lattice::Exception<NodeConfigure>("Context role '{}' is ambiguous ({} candidates)",
+                role, resolution.candidates.size());
+        if (resolution.state == Lattice::ContextResolutionState::Missing)
+            return nullptr;
+        return observed<T>(resolution.target);
+    }
+
+    /// Node of the current Context choice: InvalidNodeId when missing, error when ambiguous.
+    template<class T>
+    Lattice::NodeId focusId(std::string_view role = Lattice::typeKey<T>()) const {
+        const auto roleId = nodeSystem_->context.findRole(role);
+        if (roleId == Lattice::InvalidRoleId)
+            return Lattice::InvalidNodeId;
+        const auto resolution = nodeSystem_->context.resolveInfo(nodeSystem_->context.nearestScope(id_), roleId);
+        if (resolution.state == Lattice::ContextResolutionState::Ambiguous)
+            throw Lattice::Exception<NodeConfigure>("Context role '{}' is ambiguous ({} candidates)",
+                role, resolution.candidates.size());
+        if (resolution.state == Lattice::ContextResolutionState::Missing || !object<T>(resolution.target))
+            return Lattice::InvalidNodeId;
+        nodeSystem_->ops.observe(observer_, resolution.target);
+        return resolution.target;
+    }
+
+    /// Nearest ancestor whose own object provides T.
+    template<class T>
+    T& owner() const {
+        for (auto node = nodeSystem_->registry.require(id_).parent; node != Lattice::InvalidNodeId;
+             node = nodeSystem_->registry.require(node).parent)
+            if (object<T>(node))
+                return *observed<T>(node);
+        throw Lattice::Exception<NodeConfigure>("No owner providing '{}' above node #{}", Lattice::typeKey<T>(), id_);
+    }
+
+private:
+    NodeConfigure at(Lattice::NodeId node) const { return {node, *nodeSystem_, observer_}; }
+
+    /// The constructed, active object of `node` as T, or nullptr.
+    template<class T>
+    T* object(Lattice::NodeId node) const {
+        const auto type = nodeSystem_->blueprints.find<T>();
+        if (type == Lattice::InvalidBlueprintId || node == Lattice::InvalidNodeId)
+            return nullptr;
+        const auto target = nodeSystem_->query.objectNode(node);
+        const auto* entry = target == Lattice::InvalidNodeId ? nullptr : nodeSystem_->registry.get(target);
+        if (!entry || entry->state != Lattice::NodeState::Active || !entry->object.constructed ||
+            nodeSystem_->registry.require(node).state != Lattice::NodeState::Active)
+            return nullptr;
+        return static_cast<T*>(nodeSystem_->query.resolve(node, type));
+    }
+
+    /// Lookup outside the subtree: its retirement must reconfigure the observer.
+    template<class T>
+    T* observed(Lattice::NodeId node) const {
+        T* found = object<T>(node);
+        if (found)
+            nodeSystem_->ops.observe(observer_, node);
+        return found;
+    }
+
+    template<class T>
+    static std::vector<T*> objects(const std::vector<Entry<T>>& entries) {
+        std::vector<T*> result;
+        result.reserve(entries.size());
+        for (const auto& entry : entries)
+            result.push_back(entry.object);
+        return result;
+    }
+};
+
+/// An object of the tree together with the configure view of its node.
+template<class T>
+struct ConfiguredNode {
+    T* object;
+    NodeConfigure node;
+};
+
 namespace Lattice {
 
 template<class T>
@@ -597,7 +802,7 @@ bool Slot<T>::choice(BlueprintId implementation) {
 
 template<class T>
 template<class Result>
-bool Slot<T>::choice(std::string_view name, Result (*compose)(::NodeBuild&)) {
+bool Slot<T>::choice(std::string_view name, Result (*compose)(::NodeBuild&), void (*configure)(::NodeConfigure)) {
     if (!valid() || !compose)
         throw Exception<Slot>("Slot requires a live scope and composition function");
     struct Adapter {
@@ -622,11 +827,13 @@ bool Slot<T>::choice(std::string_view name, Result (*compose)(::NodeBuild&)) {
     if (implementation == InvalidBlueprintId) {
         Blueprint blueprint{.name = std::string(name), .bases = {api}};
         blueprint.meta.composeSlot = Adapter{compose};
+        blueprint.meta.configure = configure;
         implementation = blueprints.create(std::move(blueprint), std::string(name));
     } else {
         const auto& blueprint = blueprints.require(implementation);
         const auto* adapter = blueprint.meta.composeSlot.template target<Adapter>();
-        if (!adapter || adapter->function != compose || !blueprints.isA(implementation, api))
+        if (!adapter || adapter->function != compose || blueprint.meta.configure != configure ||
+            !blueprints.isA(implementation, api))
             throw Exception<Slot>("Composition name '{}' is already registered differently", name);
     }
     return choice(implementation);
@@ -679,6 +886,54 @@ Ref<T> Focus<T>::ref() const {
         throw Exception<Focus>("Context role '{}' has no available '{}' object",
             runtime_->context.roleName(role_), typeKey<T>());
     return detail::reference<T>(*runtime_, resolution.target);
+}
+
+template<class T>
+template<class U>
+void Focus<T>::set(const Ref<U>& target) {
+    if (!valid())
+        throw Exception<Focus>("Focus scope has expired or is retiring");
+    detail::resolveHandle(target, *runtime_);
+    const auto type = runtime_->blueprints.find<T>();
+    if (type == InvalidBlueprintId || !runtime_->query.resolve(target.id(), type))
+        throw Exception<Focus>("Selected node does not provide '{}'", typeKey<T>());
+    // A branch may focus any compatible object it owns, not only visible candidates.
+    if (runtime_->ops.isUnder(target.id(), owner_))
+        runtime_->context.addCandidate(scope_, role_, target.id());
+    runtime_->context.set(scope_, role_, target.id());
+}
+
+template<class T>
+void Focus<T>::set(T* object) {
+    if (!valid())
+        throw Exception<Focus>("Focus scope has expired or is retiring");
+    if (!object)
+        throw Exception<Focus>("Focus on '{}' requires an object", typeKey<T>());
+    const auto type = runtime_->blueprints.find<T>();
+    if (type == InvalidBlueprintId)
+        throw Exception<Focus>("'{}' has no objects", typeKey<T>());
+    const auto matches = [&](NodeId node) {
+        const auto* entry = runtime_->registry.get(node);
+        return entry && entry->state == NodeState::Active && runtime_->query.resolve(node, type) == object;
+    };
+    auto nodes = runtime_->query.collect(owner_, type);
+    const auto candidates = runtime_->context.resolveInfo(scope_, role_).candidates;
+    nodes.insert(nodes.end(), candidates.begin(), candidates.end());
+    for (const NodeId node : nodes)
+        if (matches(node))
+            return set(detail::reference<T>(*runtime_, node));
+    throw Exception<Focus>("Object is not a '{}' this scope can focus", typeKey<T>());
+}
+
+template<class T>
+template<class U, class F>
+void Focus<T>::onChange(const Ref<U>& owner, F callback) const {
+    if (!valid())
+        throw Exception<Focus>("Focus scope has expired or is retiring");
+    detail::resolveHandle(owner, *runtime_);
+    static_assert(std::is_invocable_v<F&, U&, const Focus<T>&>, "callback(owner&, const Focus&)");
+    runtime_->context.observe(role_, owner.id(), owner.generation(),
+        [focus = *this, owner, callback = std::move(callback)]() mutable { callback(*owner, focus); });
 }
 
 template<class T>

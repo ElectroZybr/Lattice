@@ -234,7 +234,9 @@ namespace Lattice {
         auto snapshot = blueprints;
 
         try {
-            blueprints.addComposition(candidate->manifest.id, compose);
+            // configure is optional: a package without live wiring exports only compose.
+            blueprints.addComposition(candidate->manifest.id, compose,
+                candidate->library->symbol<PackageConfigureFn>("configure"));
         } catch (const std::exception& error) {
             blueprints = std::move(snapshot);
             Logger::error(tag, "Registration failed for '{}': {}", candidate->manifest.id, error.what());

@@ -4,11 +4,11 @@
 using namespace SlotExample;
 namespace {
 auto composeSoftware(NodeBuild& run) {
-    return run.emplace<SoftwareRenderer>("backend", run.require<Palette>("palette"));
+    return run.construct<SoftwareRenderer, Renderer>(run.require<Palette>("palette"));
 }
 auto composeHardware(NodeBuild& run) {
     auto queue = run.emplace<UploadQueue>("uploads", run.require<Palette>("palette"));
-    return run.emplace<HardwareRenderer>("backend", queue);
+    return run.construct<HardwareRenderer, Renderer>(queue);
 }
 }
 

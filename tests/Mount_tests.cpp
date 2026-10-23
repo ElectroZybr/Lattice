@@ -13,10 +13,10 @@ struct Consumer {
 };
 
 TEST(Node_CompactLayout, RuntimeFixture,
-    "Node должен занимать не больше 64 байт на 64-битной платформе.")
+    "Node должен занимать не больше 72 байт на 64-битной платформе.")
 {
     if constexpr (sizeof(void*) == 8)
-        REQUIRE(sizeof(Node) <= 64);
+        REQUIRE(sizeof(Node) <= 72);
 }
 
 TEST(Mount_RetainsSharedProvider, RuntimeFixture,

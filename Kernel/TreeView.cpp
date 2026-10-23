@@ -78,9 +78,8 @@ TreeNodeInfo TreeView::info(NodeId id) const {
     TreeNodeInfo result{
         .id = id,
         .parent = node.parent,
-        .relation = node.relation,
         .blueprint = node.bp,
-        .implementationBlueprint = node.object.bp,
+        .implementationBlueprint = node.kind == NodeKind::Slot ? node.choice : node.object.bp,
         .kind = node.kind,
         .state = node.state,
         .name = node.name,
@@ -90,8 +89,9 @@ TreeNodeInfo TreeView::info(NodeId id) const {
 
     if (node.type() != InvalidBlueprintId)
         result.type = nodes_->blueprints.require(node.type()).shortName();
-    if (node.object.bp != InvalidBlueprintId)
-        result.implementation = nodes_->blueprints.require(node.object.bp).shortName();
+    if (const auto implementation = node.kind == NodeKind::Slot ? node.choice : node.object.bp;
+        implementation != InvalidBlueprintId)
+        result.implementation = nodes_->blueprints.require(implementation).shortName();
 
     return result;
 }

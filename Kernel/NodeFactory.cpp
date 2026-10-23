@@ -65,6 +65,8 @@ NodeId NodeFactory::createNode(
 
     Logger::info("NodeFactory", "added node '{}'", label);
 
+    if (parent != InvalidNodeId)
+        nodeSystem_.ops.invalidate(parent);
     return id;
 }
 
@@ -90,11 +92,14 @@ void NodeFactory::construct(NodeId id, BlueprintId type,
         throw Exception<NodeFactory>("Blueprint has no object storage operations");
     {
         auto& node = nodeSystem_.registry.require(id);
+        // A slot being composed holds its implementation object itself.
+        const bool slot = node.kind == NodeKind::Slot && node.object.building && !node.object.ptr;
         const bool holder = node.kind == NodeKind::Object || node.kind == NodeKind::Folder;
-        if (node.state != NodeState::Active || !holder || node.object.ptr || node.object.building)
+        if (node.state != NodeState::Active || node.object.ptr || (!slot && (!holder || node.object.building)))
             throw Exception<NodeFactory>("Node #{} cannot hold another object", id);
         // A structural branch becomes the node of its object; its children stay owned by it.
-        node.kind = NodeKind::Object;
+        if (!slot)
+            node.kind = NodeKind::Object;
     }
     try {
         void* storage = meta.allocate();
@@ -105,6 +110,7 @@ void NodeFactory::construct(NodeId id, BlueprintId type,
         auto& object = nodeSystem_.registry.require(id).object;
         object.constructed = true;
         object.building = false;
+        nodeSystem_.ops.invalidate(id);
     } catch (...) {
         nodeSystem_.ops.destroyBranch(id);
         throw;
@@ -118,23 +124,38 @@ NodeId NodeFactory::folder(NodeId parent, std::string_view name) {
 void NodeFactory::constructObject(NodeId id, BlueprintId implementation) {
     const auto blueprint = nodeSystem_.blueprints.require(implementation);
 
+    // configure runs once the composition is complete, then again on tree changes.
+    struct Composing {
+        NodeOps& ops;
+        NodeId id;
+        bool done = false;
+        ~Composing() { if (!done) ops.abortCompose(id); }
+    };
+
     if (blueprint.meta.composeSlot) {
         auto build = nodeSystem_.builder.node(id);
-        auto& object = nodeSystem_.registry.require(id).object;
-        object.bp = implementation;
-        object.building = true;
+        nodeSystem_.registry.require(id).choice = implementation;
+        nodeSystem_.registry.require(id).object.building = true;
+        nodeSystem_.ops.beginCompose(id);
+        Composing composing{nodeSystem_.ops, id};
         const auto target = blueprint.meta.composeSlot(build);
-        if (target == id || !nodeSystem_.ops.isUnder(target, id) ||
-            !nodeSystem_.query.resolve(target, nodeSystem_.registry.require(id).bp))
-            throw Exception<NodeFactory>("Slot composition must return a live API object owned by its subtree");
-        nodeSystem_.registry.require(id).relation = target;
-        nodeSystem_.registry.require(id).object.building = false;
+        // The implementation object lives on the slot itself (slot.construct<Impl, API>).
+        auto& node = nodeSystem_.registry.require(id);
+        node.object.building = false;
+        if (target != id || !node.object.ptr || !nodeSystem_.query.resolve(id, node.bp))
+            throw Exception<NodeFactory>("Slot composition must construct its API object on the slot");
+        composing.done = true;
+        nodeSystem_.ops.endCompose(id);
         return;
     }
 
     if (blueprint.meta.compose) {
         nodeSystem_.registry.require(id).object.bp = implementation;
+        nodeSystem_.ops.beginCompose(id);
+        Composing composing{nodeSystem_.ops, id};
         blueprint.meta.compose(nodeSystem_.builder.node(id));
+        composing.done = true;
+        nodeSystem_.ops.endCompose(id);
         return;
     }
 
@@ -211,7 +232,7 @@ NodeId NodeFactory::slot(NodeId parent, BlueprintId api, std::string_view instan
 
 bool NodeFactory::choice(NodeId id, BlueprintId impl) {
     const BlueprintId api = nodeSystem_.registry.require(id).bp;
-    const BlueprintId current = nodeSystem_.registry.require(id).object.bp;
+    const BlueprintId current = nodeSystem_.registry.require(id).choice;
 
     if (nodeSystem_.registry.require(id).state == NodeState::Retiring)
         throw Exception<NodeFactory>("Node #{} is retiring", id);
@@ -235,16 +256,12 @@ bool NodeFactory::choice(NodeId id, BlueprintId impl) {
     // through the normal lifecycle, keeping the slot identity/context candidate alive.
     const auto currentBlueprint = nodeSystem_.blueprints.get(current);
     if (currentBlueprint && currentBlueprint->meta.composeSlot) {
-        const auto children = std::vector<NodeId>(nodeSystem_.registry.children(id).begin(),
-                                                  nodeSystem_.registry.children(id).end());
+        // The implementation object is on the slot and depends on the slot's children:
+        // they go together in clearContents. External consumers retire first.
         const auto dependents = std::vector<NodeId>(nodeSystem_.dependencies.dependents(id).begin(),
                                                     nodeSystem_.dependencies.dependents(id).end());
         // An ancestor consumer would retire the slot itself; require an external
         // branch rebuild instead of silently removing the handle being replaced.
-        for (auto child : children)
-            for (auto affected : nodeSystem_.ops.collectRemovalClosure(child))
-                if (nodeSystem_.ops.isUnder(id, affected))
-                    throw Exception<NodeFactory>("Slot replacement would retire its owner; rebuild the owning branch");
         for (auto dependent : dependents)
             if (nodeSystem_.ops.isUnder(id, dependent))
                 throw Exception<NodeFactory>("Slot replacement would retire its owner; rebuild the owning branch");
@@ -254,9 +271,8 @@ bool NodeFactory::choice(NodeId id, BlueprintId impl) {
             nodeSystem_.context.destroyScope(scope);
         for (auto dependent : dependents)
             nodeSystem_.ops.retireBranch(dependent);
-        for (auto child : children)
-            nodeSystem_.ops.retireBranch(child);
-        if (!children.empty() || !dependents.empty())
+        const bool ready = nodeSystem_.ops.retireObject(id);
+        if (!dependents.empty() || !ready)
             return false;
     }
 
@@ -289,9 +305,9 @@ void NodeFactory::share(NodeId id, BlueprintId api) {
     if (node.state == NodeState::Retiring)
         throw Exception<NodeFactory>("Node #{} is retiring", id);
 
-    if (!nodeSystem_.blueprints.isA(node.bp, api))
+    if (!nodeSystem_.blueprints.isA(node.bp, api) && !nodeSystem_.blueprints.isA(node.object.bp, api))
         throw Exception<NodeFactory>("'{}' does not implement '{}'",
-            nodeSystem_.blueprints.require(node.bp).name,
+            nodeSystem_.blueprints.require(node.type()).name,
             nodeSystem_.blueprints.require(api).name);
 
     NodeId root = id;

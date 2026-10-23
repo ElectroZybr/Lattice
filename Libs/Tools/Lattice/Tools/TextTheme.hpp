@@ -71,8 +71,18 @@ public:
         return theme;
     }
 
-    static const TextTheme& system() {
-        static const TextTheme theme = defaults();
+    /// The process-wide theme used by Logger and formatters; mutable so that runtime
+    /// overrides (CLI theme params) recolor all output. Default visibility keeps one
+    /// instance across shared libraries built with hidden symbols.
+#if defined(__GNUC__)
+    [[gnu::visibility("default")]]
+#endif
+    // Default visibility: one theme per process across libraries built with hidden symbols.
+#if defined(__GNUC__)
+    [[gnu::visibility("default")]]
+#endif
+    static TextTheme& system() {
+        static TextTheme theme = defaults();
         return theme;
     }
 

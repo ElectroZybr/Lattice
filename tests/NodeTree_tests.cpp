@@ -199,7 +199,7 @@ TEST(TreeView_NodeMetadata, RuntimeFixture,
 
     auto slot = fixture.build(fixture.root).addSlot<TestAPI>("selected");
     slot.choice("Tree::ImplA", +[](::NodeBuild& branch) {
-        return branch.emplace<TestImplA, TestAPI>("impl");
+        return branch.construct<TestImplA, TestAPI>();
     });
 
     const TreeNodeInfo info = fixture.build(fixture.root).tree().info(slot.id());
@@ -209,8 +209,7 @@ TEST(TreeView_NodeMetadata, RuntimeFixture,
     REQUIRE(info.implementation == "ImplA");
     REQUIRE(info.blueprint == nodes.blueprints.id<TestAPI>());
     REQUIRE(info.implementationBlueprint == nodes.blueprints.find("Tree::ImplA"));
-    // The composed object lives in the slot subtree, not on the slot node.
-    REQUIRE(!info.hasObject);
+    REQUIRE(info.hasObject);
     REQUIRE(slot.get() != nullptr);
 }
 

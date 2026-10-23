@@ -1,5 +1,7 @@
 #include <Lattice/Kernel/NodeQuery.hpp>
 
+#include <string>
+
 #include <Lattice/Kernel/Blueprints.hpp>
 #include <Lattice/Tools/Exception.hpp>
 #include <Lattice/Kernel/NodeRegistry.hpp>
@@ -76,18 +78,13 @@ std::vector<NodeId> NodeQuery::collect(NodeId from, BlueprintId api) const {
     blueprints_.require(api);
 
     std::vector<NodeId> result;
-    std::vector<NodeId> slotObjects;
 
     auto walk = [&](auto&& self, NodeId current) -> void {
         if (registry_.require(current).state == NodeState::Retiring)
             return;
 
-        if (provides(current, api) && std::ranges::find(slotObjects, current) == slotObjects.end()) {
+        if (provides(current, api))
             result.push_back(current);
-            const auto& node = registry_.require(current);
-            if (node.kind == NodeKind::Slot && node.relation != InvalidNodeId)
-                slotObjects.push_back(objectNode(current));
-        }
 
         for (NodeId child : registry_.children(current))
             self(self, child);
@@ -111,8 +108,6 @@ NodeId NodeQuery::objectNode(NodeId id) const {
     const auto* node = registry_.get(id);
     if (!node || node->state == NodeState::Retiring || node->object.building)
         return InvalidNodeId;
-    if (node->kind == NodeKind::Slot && node->relation != InvalidNodeId)
-        return objectNode(node->relation);
     return node->object.ptr ? id : InvalidNodeId;
 }
 
@@ -135,19 +130,23 @@ void* NodeQuery::resolve(NodeId id, std::string_view api) const {
 
 NodeId NodeQuery::shared(NodeId from, BlueprintId api) const {
     const RoleId role = context_.findRole(blueprints_.require(api).name);
-
     if (role == InvalidRoleId)
         throw Exception<NodeQuery>("Shared '{}' not found", blueprints_.require(api).name);
 
-    const auto scope = context_.nearestScope(from);
-    const auto result = context_.resolveInfo(scope, role);
-
+    const auto result = context_.resolveInfo(context_.nearestScope(from), role);
+    if (result.state == ContextResolutionState::Ambiguous) {
+        std::string candidates;
+        for (const NodeId candidate : result.candidates) {
+            std::string path;
+            for (NodeId current = candidate; current != InvalidNodeId; current = registry_.require(current).parent)
+                path.insert(0, "/" + std::string(registry_.require(current).name));
+            candidates += "\n- " + path;
+        }
+        throw Exception<NodeQuery>("Shared '{}' is ambiguous; focus one of:{}",
+            blueprints_.require(api).name, candidates);
+    }
     if (result.state == ContextResolutionState::Missing)
         throw Exception<NodeQuery>("Shared '{}' not found", blueprints_.require(api).name);
-
-    if (result.state == ContextResolutionState::Ambiguous)
-        throw Exception<NodeQuery>("Shared '{}' is ambiguous", blueprints_.require(api).name);
-
     return result.target;
 }
 

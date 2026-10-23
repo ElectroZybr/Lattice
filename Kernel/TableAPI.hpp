@@ -68,6 +68,7 @@ public:
     bool empty() const noexcept { return size_ == 0; }
 
     const void* element(size_t row) const {
+        requireHost();
         if (row >= size_)
             throw Exception<ColumnView>("Row {} is out of range [0, {})", row, size_);
 
@@ -77,6 +78,7 @@ public:
     template<typename T>
     std::span<const T> values() const {
         using Value = std::remove_cv_t<T>;
+        requireHost();
         if (!type_.is<Value>())
             throw Exception<ColumnView>(
                 "Column '{}' contains '{}', requested '{}'",
@@ -90,7 +92,15 @@ public:
         return {static_cast<const Value*>(data_), size_};
     }
 
+    /// False for columns that live elsewhere (a GPU table): data is not addressable here.
+    bool hostAccessible() const noexcept { return data_ != nullptr || size_ == 0; }
+
 private:
+    void requireHost() const {
+        if (!hostAccessible())
+            throw Exception<ColumnView>("Column '{}' is not host-accessible", name_);
+    }
+
     std::string_view name_;
     TableType type_;
     const void* data_ = nullptr;

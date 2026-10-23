@@ -22,9 +22,8 @@ Replacement renderer: hardware; frame=32
 ```text
 demo
 ├── Palette:palette
-├── Slot<Renderer>:renderer
-│   └── SoftwareRenderer:backend
-└── Viewport:viewport → renderer/backend
+├── Slot<Renderer>:renderer          объект SoftwareRenderer на самом слоте
+└── Viewport:viewport → renderer
 ```
 
 После замены:
@@ -32,10 +31,9 @@ demo
 ```text
 demo
 ├── Palette:palette
-├── Slot<Renderer>:renderer
-│   ├── UploadQueue:uploads → palette
-│   └── HardwareRenderer:backend → uploads
-└── Viewport:viewport → renderer/backend
+├── Slot<Renderer>:renderer          объект HardwareRenderer на самом слоте → uploads
+│   └── UploadQueue:uploads → palette
+└── Viewport:viewport → renderer
 ```
 
 `Palette` переживает замену. Очередь загрузки принадлежит только hardware-подветке.
@@ -43,12 +41,12 @@ demo
 
 ```cpp
 auto composeSoftware(NodeBuild& run) {
-    return run.emplace<SoftwareRenderer>("backend", run.require<Palette>("palette"));
+    return run.construct<SoftwareRenderer, Renderer>(run.require<Palette>("palette"));
 }
 
 auto composeHardware(NodeBuild& run) {
     auto queue = run.emplace<UploadQueue>("uploads", run.require<Palette>("palette"));
-    return run.emplace<HardwareRenderer>("backend", queue);
+    return run.construct<HardwareRenderer, Renderer>(queue);
 }
 
 auto renderer = root.addSlot<Renderer>("renderer");
@@ -58,10 +56,10 @@ root.emplace<Viewport>("viewport", renderer.ref());
 
 `choice(name, function)` регистрирует composition blueprint при первом использовании.
 Тип объекта берётся из возвращаемого handle; Slot открывает его API автоматически.
-`node.bp` слота хранит API, `node.object.bp` — выбранную композицию;
-`node.object.ptr` пуст, объект реализации принадлежит дочерней ноде.
-Отдельный класс композиции и список регистрации типов не нужны. Возвращаемый объект
-должен принадлежать поддереву слота и этому runtime, а его C++ тип — реализовывать API.
+`node.bp` слота хранит API, `node.choice` — выбранную композицию; объект реализации
+создаётся на самом узле слота (`construct<Impl, API>`), его дети — части реализации.
+Отдельный класс композиции и список регистрации типов не нужны. Композиция обязана
+вернуть объект, созданный `construct` на слоте, а его C++ тип — реализовывать API.
 Функция принимает `NodeBuild&` и возвращает `ObjectBuild<T>` или `Ref<T>`.
 Если возвращаемый `Ref<API>` уже скрывает конкретный тип, API нужно открыть при
 создании: `emplace<Implementation, API>(...)`. Возврат конкретного handle через
@@ -107,7 +105,6 @@ root.emplace<Viewport>("viewport", renderer.ref());
 - `Slot` и `Focus` видят текущий renderer. Их `ref()`, а также `require`, `find`,
   `children` и `collect` возвращают снимок конкретного объекта с его поколением.
   Старый снимок не превращается в ссылку на новую реализацию.
-- `collect<Renderer>()` не считает один объект дважды через слот и его backend.
 - Неудачная сборка удаляет новую частичную подветку, её экспорты, локальный Context
   и зависимости. Slot остаётся пустым; прежняя реализация не восстанавливается.
 - Устаревший Slot после удаления и повторного использования NodeId отклоняет `choice`.

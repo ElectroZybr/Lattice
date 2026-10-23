@@ -20,11 +20,13 @@ std::string_view Blueprint::namespaceName() const noexcept {
         : std::string_view(name).substr(0, pos);
 }
 
-BlueprintId Blueprints::addComposition(std::string_view name, void (*compose)(::NodeBuild)) {
+BlueprintId Blueprints::addComposition(std::string_view name, void (*compose)(::NodeBuild),
+                                       void (*configure)(::NodeConfigure)) {
     if (!compose)
         throw Exception<Blueprints>("Composition callback is null");
     const auto id = add(name);
     require(id).meta.compose = compose;
+    require(id).meta.configure = configure;
     return id;
 }
 

@@ -21,7 +21,6 @@ struct TreeEntry {
 struct TreeNodeInfo {
     NodeId id = InvalidNodeId;
     NodeId parent = InvalidNodeId;
-    NodeId relation = InvalidNodeId;
     BlueprintId blueprint = InvalidBlueprintId;
     BlueprintId implementationBlueprint = InvalidBlueprintId;
     NodeKind kind = NodeKind::Folder;

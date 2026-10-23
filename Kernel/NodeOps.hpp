@@ -27,10 +27,27 @@ public:
     ServiceRunner* service(NodeId id) const;
     std::vector<NodeId> services(NodeId root) const;
     void maintain();
+
+    // configure: repeatable wiring of composed branches with the current tree.
+    /// Mark configure branches affected by a change at `changed` (its ancestors and
+    /// branches that looked it up) to be reconfigured.
+    void invalidate(NodeId changed);
+    /// Composition of `id` is running: its configure waits until compose finishes.
+    void beginCompose(NodeId id);
+    /// Compose of `id` finished: run its configure now (if any).
+    void endCompose(NodeId id);
+    /// Compose of `id` failed: forget it without configuring.
+    void abortCompose(NodeId id) noexcept;
+    /// Run configure of every invalidated branch until none is left.
+    void reconfigure();
+    /// Remember that configure of `observer` looked up `observed` outside its subtree.
+    void observe(NodeId observer, NodeId observed);
     void retireBranch(NodeId id);
     size_t collectRetired();
     void destroyBranch(NodeId id);
     void clearContents(NodeId id);
+    /// Ask the node's own object to stop (once); true when it is ready to be destroyed.
+    bool retireObject(NodeId id);
 
     void dumpTree(NodeId id, NodeId highlighted = InvalidNodeId) const;
     void dumpContext() const;
@@ -53,7 +70,15 @@ private:
     };
     void beginRetire(NodeId id);
     bool isReadyToDestroy(NodeId id) const;
+    bool configurable(NodeId id) const;
+    void configure(NodeId id);
+
     std::vector<Lifecycle> lifecycle_;
+    std::vector<NodeId> dirty_;
+    std::vector<NodeId> composing_;
+    std::vector<NodeId> configured_;
+    std::vector<std::pair<NodeId, NodeId>> observations_;   // observer, observed
+    bool reconfiguring_ = false;
     std::vector<std::vector<NodeId>> retiring_;
     std::vector<NodeId> destroying_;
 };

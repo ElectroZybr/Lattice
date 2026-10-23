@@ -181,6 +181,8 @@ void NodeOps::retireBranch(NodeId id) {
         nodeSystem_.exports.remove(nodeId);
         newlyRetiring.push_back(nodeId);
     }
+    for (NodeId nodeId : newlyRetiring)
+        invalidate(nodeId);
 
     size_t destination = retiring_.size();
     for (size_t index = 0; index < retiring_.size();) {
@@ -263,7 +265,104 @@ size_t NodeOps::collectRetired() {
 }
 
 void NodeOps::maintain() {
+    // A Context change can alter any focus lookup: reconfigure every branch.
+    if (nodeSystem_.context.pending())
+        for (NodeId id : configured_)
+            if (std::ranges::find(dirty_, id) == dirty_.end())
+                dirty_.push_back(id);
+    // Before destruction: configured objects drop retiring nodes while they still live.
+    reconfigure();
     collectRetired();
+    reconfigure();
+    nodeSystem_.context.notifyChanges();
+}
+
+bool NodeOps::configurable(NodeId id) const {
+    const auto* node = nodeSystem_.registry.get(id);
+    if (!node || node->state != NodeState::Active)
+        return false;
+    const BlueprintId composition = node->kind == NodeKind::Slot ? node->choice : node->bp;
+    const auto* blueprint = nodeSystem_.blueprints.get(composition);
+    return blueprint && blueprint->meta.configure &&
+        std::ranges::find(composing_, id) == composing_.end();
+}
+
+void NodeOps::invalidate(NodeId changed) {
+    const auto mark = [this](NodeId id) {
+        if (std::ranges::find(dirty_, id) == dirty_.end())
+            dirty_.push_back(id);
+    };
+    for (NodeId current = changed; current != InvalidNodeId;) {
+        const auto* node = nodeSystem_.registry.get(current);
+        if (!node)
+            break;
+        if (configurable(current) || std::ranges::find(composing_, current) != composing_.end())
+            mark(current);
+        current = node->parent;
+    }
+    for (const auto& [observer, observed] : observations_)
+        if (observed == changed)
+            mark(observer);
+}
+
+void NodeOps::observe(NodeId observer, NodeId observed) {
+    if (observer == InvalidNodeId || observed == InvalidNodeId)
+        return;
+    const std::pair entry{observer, observed};
+    if (std::ranges::find(observations_, entry) == observations_.end())
+        observations_.push_back(entry);
+}
+
+void NodeOps::beginCompose(NodeId id) {
+    composing_.push_back(id);
+}
+
+void NodeOps::abortCompose(NodeId id) noexcept {
+    std::erase(composing_, id);
+    std::erase(dirty_, id);
+}
+
+void NodeOps::endCompose(NodeId id) {
+    std::erase(composing_, id);
+    if (!configurable(id))
+        return;
+    if (std::ranges::find(configured_, id) == configured_.end())
+        configured_.push_back(id);
+    configure(id);
+}
+
+void NodeOps::configure(NodeId id) {
+    std::erase(dirty_, id);
+    std::erase_if(observations_, [id](const auto& entry) { return entry.first == id; });
+    const auto& node = nodeSystem_.registry.require(id);
+    const BlueprintId composition = node.kind == NodeKind::Slot ? node.choice : node.bp;
+    const auto configure = nodeSystem_.blueprints.require(composition).meta.configure;
+    try {
+        configure(::NodeConfigure{id, nodeSystem_, id});
+    } catch (const ExceptionBase&) {
+        throw;
+    } catch (const std::exception& error) {
+        throw Exception<NodeOps>("configure of '{}' failed: {}", stringPath(id), error.what());
+    }
+}
+
+void NodeOps::reconfigure() {
+    if (reconfiguring_)
+        return;
+    reconfiguring_ = true;
+    struct Guard { bool& flag; ~Guard() { flag = false; } } guard{reconfiguring_};
+    std::erase_if(configured_, [this](NodeId id) { return !nodeSystem_.registry.get(id); });
+    // configure only assigns values, but one may still disturb another: bound the passes.
+    for (size_t calls = 0; !dirty_.empty(); ++calls) {
+        if (calls > 64 * (configured_.size() + 1))
+            throw Exception<NodeOps>("configure does not settle: branches keep invalidating each other");
+        const NodeId id = dirty_.front();
+        if (!configurable(id)) {
+            std::erase(dirty_, id);
+            continue;
+        }
+        configure(id);
+    }
 }
 
 void NodeOps::destroyBranch(NodeId id) {
@@ -297,8 +396,22 @@ void NodeOps::destroyBranch(NodeId id) {
     if (const ContextScopeId scope = nodeSystem_.context.findScope(id); scope != InvalidContextScopeId)
         nodeSystem_.context.destroyScope(scope);
 
+    const NodeId parent = nodeSystem_.registry.require(id).parent;
     nodeSystem_.dependencies.removeNode(id);
     nodeSystem_.registry.destroy(id);
+    std::erase(dirty_, id);
+    std::erase(configured_, id);
+    std::erase_if(observations_, [id](const auto& entry) { return entry.first == id || entry.second == id; });
+    invalidate(parent);
+    // Destruction outside maintain (slot replacement, rollback): rewire immediately,
+    // so configured objects never keep a destroyed node.
+    if (destroying_.size() == 1)
+        reconfigure();
+}
+
+bool NodeOps::retireObject(NodeId id) {
+    beginRetire(id);
+    return isReadyToDestroy(id);
 }
 
 void NodeOps::clearContents(NodeId id) {
@@ -333,7 +446,7 @@ void NodeOps::clearContents(NodeId id) {
         if (nodeSystem_.registry.get(child))
             destroyBranch(child);
     if (nodeSystem_.registry.require(id).kind == NodeKind::Slot)
-        nodeSystem_.registry.require(id).relation = InvalidNodeId;
+        nodeSystem_.registry.require(id).choice = InvalidBlueprintId;
     if (id < lifecycle_.size())
         lifecycle_[id] = {};
 }
@@ -398,8 +511,8 @@ void NodeOps::dumpTree(NodeId id, NodeId highlighted) const {
                         ? std::string(type)
                         : std::format("{}<mut2>::{}</>", type, child.name);
 
-                    line += child.object.ptr
-                        ? std::format("<mut2>::</><h>{}</> <h>S</>", nodeSystem_.blueprints.require(child.object.bp).shortName())
+                    line += child.choice != InvalidBlueprintId
+                        ? std::format("<mut2>::</><h>{}</> <h>S</>", nodeSystem_.blueprints.require(child.choice).shortName())
                         : "<mut2>::</><h>empty</> <h>S</>";
                     break;
                 }
