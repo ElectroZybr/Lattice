@@ -1,6 +1,6 @@
 #include <chrono>
 
-#include <Lattice/Tools/BmRunner/Benchmarks.hpp>
+#include <BmRunner/Benchmarks.hpp>
 #include <Lattice/Tools/Tests.hpp>
 
 namespace Lattice {

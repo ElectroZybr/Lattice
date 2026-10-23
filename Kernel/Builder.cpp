@@ -20,15 +20,14 @@ Builder::Batch::~Batch() {
 NodeId Builder::Batch::add(
     NodeId parent,
     BlueprintId blueprint,
-    std::string_view instance,
-    const void* descriptor
+    std::string_view instance
 ) {
     if (!builder_ || finished_)
         throw Exception<Builder>("Cannot add a branch to a finished batch");
 
     NodeId branch = InvalidNodeId;
     try {
-        branch = builder_->create(parent, blueprint, instance, descriptor);
+        branch = builder_->create(parent, blueprint, instance);
         branches_.push_back(branch);
         return branch;
     } catch (...) {
@@ -48,20 +47,8 @@ void Builder::Batch::commit() {
     if (!builder_ || finished_)
         throw Exception<Builder>("Cannot commit a finished batch");
 
-    try {
-        for (NodeId branch : branches_)
-            builder_->nodeSystem_.ops.configureBranch(branch);
-
-        for (NodeId branch : branches_) {
-            const auto* node = builder_->nodeSystem_.registry.get(branch);
-            if (node && node->parent != InvalidNodeId)
-                builder_->nodeSystem_.ops.invalidate(node->parent);
-        }
-        finished_ = true;
-    } catch (...) {
-        rollback();
-        throw;
-    }
+    // Branches are complete once composed; commit only keeps them.
+    finished_ = true;
 }
 
 void Builder::Batch::rollback() noexcept {
@@ -83,11 +70,10 @@ void Builder::Batch::rollback() noexcept {
 NodeId Builder::add(
     NodeId parent,
     BlueprintId blueprint,
-    std::string_view instance,
-    const void* descriptor
+    std::string_view instance
 ) {
     Batch batch = begin();
-    const NodeId branch = batch.add(parent, blueprint, instance, descriptor);
+    const NodeId branch = batch.add(parent, blueprint, instance);
     batch.commit();
     return branch;
 }
@@ -116,8 +102,7 @@ void Builder::del(NodeId parent, NodeId child) {
 NodeId Builder::create(
     NodeId parent,
     BlueprintId blueprint,
-    std::string_view instance,
-    const void* descriptor
+    std::string_view instance
 ) {
     if (parent != InvalidNodeId)
         nodeSystem_.registry.require(parent);
@@ -132,7 +117,7 @@ NodeId Builder::create(
             parent
         );
 
-    return nodeSystem_.factory.component(parent, blueprint, instance, descriptor);
+    return nodeSystem_.factory.component(parent, blueprint, instance);
 }
 
 }

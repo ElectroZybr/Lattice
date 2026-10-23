@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -18,14 +19,13 @@ public:
     NodeOps(NodeSystem& nodeSystem)
         : nodeSystem_(nodeSystem) {}
 
-    void configureBranch(NodeId id);
-    void invalidate(NodeId id);
+    void onRetire(NodeId id, std::function<void(void*)> callback);
+    void readyToDestroy(NodeId id, std::function<bool(const void*)> callback);
     void maintain();
     void retireBranch(NodeId id);
     size_t collectRetired();
     void destroyBranch(NodeId id);
     void clearContents(NodeId id);
-    void configure(NodeId id);
 
     void dumpTree(NodeId id, NodeId highlighted = InvalidNodeId) const;
     void dumpContext() const;
@@ -40,8 +40,16 @@ public:
     std::vector<NodeId> collectRemovalClosure(NodeId id) const;
 
 private:
+    struct Lifecycle {
+        std::function<void(void*)> retire;
+        std::function<bool(const void*)> ready;
+        bool retireCalled = false;
+    };
+    void beginRetire(NodeId id);
+    bool isReadyToDestroy(NodeId id) const;
+    std::vector<Lifecycle> lifecycle_;
     std::vector<std::vector<NodeId>> retiring_;
-    std::vector<NodeId> invalidated_;
+    std::vector<NodeId> destroying_;
 };
 
 }

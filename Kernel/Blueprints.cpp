@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <format>
 #include <Lattice/Tools/Exception.hpp>
-#include <Lattice/Tools/Logger.hpp>
+#include <Logger/Logger.hpp>
 #include <Lattice/Tools/TreeFormatter.hpp>
 
 namespace Lattice {
@@ -18,6 +18,14 @@ std::string_view Blueprint::namespaceName() const noexcept {
     return pos == std::string::npos
         ? std::string_view{}
         : std::string_view(name).substr(0, pos);
+}
+
+BlueprintId Blueprints::addComposition(std::string_view name, void (*compose)(::NodeBuild)) {
+    if (!compose)
+        throw Exception<Blueprints>("Composition callback is null");
+    const auto id = add(name);
+    require(id).meta.compose = compose;
+    return id;
 }
 
 BlueprintId Blueprints::add(std::string_view name, std::initializer_list<BlueprintId> bases) {
@@ -43,8 +51,7 @@ BlueprintId Blueprints::add(std::string_view name, std::initializer_list<Bluepri
 
 BlueprintId Blueprints::resolveImplementation(
     BlueprintId api,
-    std::string_view nameSpace,
-    std::string_view descriptor
+    std::string_view nameSpace
 ) const {
     require(api);
 
@@ -52,9 +59,8 @@ BlueprintId Blueprints::resolveImplementation(
         const Blueprint* blueprint = get(id);
 
         return blueprint &&
-               blueprint->meta.construct &&
-               isA(id, api) &&
-               (descriptor.empty() || blueprint->meta.descriptor == descriptor);
+               blueprint->meta.compose &&
+               isA(id, api);
     };
 
     if (compatible(api))
@@ -208,26 +214,6 @@ bool Blueprints::isA(BlueprintId derived, BlueprintId base) const {
     }
 
     return false;
-}
-
-std::vector<BlueprintId> Blueprints::getImpls(BlueprintId api, bool constructibleOnly) const {
-    require(api);
-
-    std::vector<BlueprintId> result;
-
-    for (BlueprintId id = 0; id < size(); ++id) {
-        const Blueprint* blueprint = get(id);
-
-        if (!blueprint || id == api || !isA(id, api))
-            continue;
-
-        if (constructibleOnly && !blueprint->meta.construct)
-            continue;
-
-        result.push_back(id);
-    }
-
-    return result;
 }
 
 void Blueprints::dumpTree() const {

@@ -1,0 +1,15 @@
+{
+    __meta__ = {
+        version = "1.0"
+    },
+    ["linux|x86_64"] = {
+        ["glm 1.0.1#f56260b5"] = {
+            repo = {
+                branch = "master",
+                commit = "d900c309b101f95e7ca8254eadafee40bd43ad73",
+                url = "https://github.com/xmake-io/xmake-repo.git"
+            },
+            version = "1.0.1"
+        }
+    }
+}

@@ -8,13 +8,12 @@
 #include <Lattice/Kernel/NodeOps.hpp>
 #include "Lattice/Kernel/Blueprints.hpp"
 #include "Lattice/Kernel/Consts.hpp"
-#include "Lattice/Tools/Logger.hpp"
+#include "Logger/Logger.hpp"
 
 namespace Lattice {
 
 namespace {
 constexpr uint64_t NormalIdentity = std::numeric_limits<uint64_t>::max();
-constexpr uint64_t SharedIdentity = NormalIdentity - 1;
 }
 
 NodeId NodeFactory::createNode(
@@ -30,7 +29,7 @@ NodeId NodeFactory::createNode(
         nodeSystem_.registry.require(parent).state == NodeState::Retiring)
         throw Exception<NodeFactory>("Cannot create a node under retiring parent #{}", parent);
 
-    if (kind == NodeKind::Component && discriminator == NormalIdentity &&
+    if (kind == NodeKind::Object && discriminator == NormalIdentity &&
         parent != InvalidNodeId && bp != InvalidBlueprintId) {
         for (NodeId child : nodeSystem_.registry.children(parent)) {
             if (nodeSystem_.registry.require(child).bp == bp) {
@@ -69,41 +68,68 @@ NodeId NodeFactory::createNode(
     return id;
 }
 
+NodeId NodeFactory::emplace(
+    NodeId parent, BlueprintId type, std::string_view instance,
+    void (*construct)(void*, NodeId, void*), void* arguments
+) {
+    const auto meta = nodeSystem_.blueprints.require(type).meta;
+    if (!meta.allocate || !meta.ops || !construct)
+        throw Exception<NodeFactory>("Blueprint has no object storage operations");
+    if (nodeSystem_.registry.find(instance, parent, type) != InvalidNodeId)
+        throw Exception<NodeFactory>("Object '{}' already exists under node #{}", instance, parent);
+
+    const NodeId id = createNode(parent, instance, type, NodeKind::Object);
+    try {
+        void* storage = meta.allocate();
+        nodeSystem_.registry.require(id).object = {
+            .ptr = storage, .bp = type, .building = true, .constructed = false
+        };
+        construct(storage, id, arguments);
+        auto& object = nodeSystem_.registry.require(id).object;
+        object.constructed = true;
+        object.building = false;
+    } catch (...) {
+        nodeSystem_.ops.destroyBranch(id);
+        throw;
+    }
+    return id;
+}
+
 NodeId NodeFactory::folder(NodeId parent, std::string_view name) {
     return createNode(parent, name, InvalidBlueprintId, NodeKind::Folder);
 }
 
-void NodeFactory::constructObject(NodeId id, BlueprintId implementation, const void* desc) {
-    const auto& blueprint = nodeSystem_.blueprints.require(implementation);
+void NodeFactory::constructObject(NodeId id, BlueprintId implementation) {
+    const auto blueprint = nodeSystem_.blueprints.require(implementation);
 
-    if (!blueprint.meta.allocate || !blueprint.meta.construct)
-        throw Exception<NodeFactory>("Blueprint '{}' is not constructible", blueprint.name);
+    if (blueprint.meta.composeSlot) {
+        auto build = nodeSystem_.builder.node(id);
+        auto& object = nodeSystem_.registry.require(id).object;
+        object.bp = implementation;
+        object.building = true;
+        const auto target = blueprint.meta.composeSlot(build);
+        if (target == id || !nodeSystem_.ops.isUnder(target, id) ||
+            !nodeSystem_.query.resolve(target, nodeSystem_.registry.require(id).bp))
+            throw Exception<NodeFactory>("Slot composition must return a live API object owned by its subtree");
+        nodeSystem_.registry.require(id).relation = target;
+        nodeSystem_.registry.require(id).object.building = false;
+        return;
+    }
 
-    void* storage = blueprint.meta.allocate();
-    nodeSystem_.registry.require(id).object = {
-        .ptr = storage,
-        .bp = implementation,
-        .configured = false,
-        .building = true,
-        .constructed = false
-    };
+    if (blueprint.meta.compose) {
+        nodeSystem_.registry.require(id).object.bp = implementation;
+        blueprint.meta.compose(nodeSystem_.builder.node(id));
+        return;
+    }
 
-    blueprint.meta.construct(storage, nodeSystem_.builder.node(id), desc);
-
-    auto& object = nodeSystem_.registry.require(id).object;
-    object.constructed = true;
-    object.building = false;
+    throw Exception<NodeFactory>("Blueprint '{}' is not composable", blueprint.name);
 }
 
 void* NodeFactory::resolve(NodeId id, BlueprintId api) const {
-    const auto& node = nodeSystem_.registry.require(id);
-    if (node.state == NodeState::Retiring)
-        return nullptr;
-    const auto& object = node.object;
-    return nodeSystem_.blueprints.cast(object.bp, api, object.ptr);
+    return nodeSystem_.query.resolve(id, api);
 }
 
-NodeId NodeFactory::component(NodeId parent, BlueprintId api, std::string_view instance, const void* desc) {
+NodeId NodeFactory::component(NodeId parent, BlueprintId api, std::string_view instance) {
     nodeSystem_.blueprints.require(api);
 
     const BlueprintId impl = nodeSystem_.blueprints.resolveImplementation(api);
@@ -114,15 +140,15 @@ NodeId NodeFactory::component(NodeId parent, BlueprintId api, std::string_view i
         if (node.state == NodeState::Retiring)
             throw Exception<NodeFactory>("Node #{} is retiring", existing);
 
-        if (node.kind == NodeKind::Component && node.bp == impl)
+        if (node.kind == NodeKind::Object && node.bp == impl)
             return existing;
 
         throw Exception<NodeFactory>("Node '{}' already exists under parent #{}", instance, parent);
     }
 
-    const NodeId id = createNode(parent, instance, impl, NodeKind::Component);
+    const NodeId id = createNode(parent, instance, impl, NodeKind::Object);
     try {
-        constructObject(id, impl, desc);
+        constructObject(id, impl);
     } catch (...) {
         nodeSystem_.ops.destroyBranch(id);
 
@@ -132,11 +158,11 @@ NodeId NodeFactory::component(NodeId parent, BlueprintId api, std::string_view i
     return id;
 }
 
-NodeId NodeFactory::component(NodeId parent, std::string_view blueprint, std::string_view instance, const void* desc) {
+NodeId NodeFactory::component(NodeId parent, std::string_view blueprint, std::string_view instance) {
     const BlueprintId id = nodeSystem_.blueprints.resolve(blueprint);
     if (id == InvalidBlueprintId)
         throw Exception<NodeFactory>("Unknown blueprint '{}'", blueprint);
-    return component(parent, id, instance, desc);
+    return component(parent, id, instance);
 }
 
 NodeId NodeFactory::slot(NodeId parent, std::string_view api, std::string_view instance) {
@@ -167,7 +193,7 @@ NodeId NodeFactory::slot(NodeId parent, BlueprintId api, std::string_view instan
     return id;
 }
 
-void NodeFactory::choice(NodeId id, BlueprintId impl) {
+bool NodeFactory::choice(NodeId id, BlueprintId impl) {
     const BlueprintId api = nodeSystem_.registry.require(id).bp;
     const BlueprintId current = nodeSystem_.registry.require(id).object.bp;
 
@@ -182,20 +208,62 @@ void NodeFactory::choice(NodeId id, BlueprintId impl) {
             nodeSystem_.blueprints.require(impl).name,
             nodeSystem_.blueprints.require(api).name);
 
-    if (current == impl)
-        return;
+    if (current == impl && !nodeSystem_.registry.require(id).object.building)
+        return true;
 
-    const auto& blueprint = nodeSystem_.blueprints.require(impl);
-    if (!blueprint.meta.construct)
-        throw Exception<NodeFactory>("Blueprint '{}' is not constructible", nodeSystem_.blueprints.require(impl).name);
+    const auto blueprint = nodeSystem_.blueprints.require(impl);
+    if (!blueprint.meta.compose && !blueprint.meta.composeSlot)
+        throw Exception<NodeFactory>("Blueprint '{}' is not composable", nodeSystem_.blueprints.require(impl).name);
+
+    // Composed slots have no object at the slot node: retire their owned subtree
+    // through the normal lifecycle, keeping the slot identity/context candidate alive.
+    const auto currentBlueprint = nodeSystem_.blueprints.get(current);
+    if (currentBlueprint && currentBlueprint->meta.composeSlot) {
+        const auto children = std::vector<NodeId>(nodeSystem_.registry.children(id).begin(),
+                                                  nodeSystem_.registry.children(id).end());
+        const auto dependents = std::vector<NodeId>(nodeSystem_.dependencies.dependents(id).begin(),
+                                                    nodeSystem_.dependencies.dependents(id).end());
+        // An ancestor consumer would retire the slot itself; require an external
+        // branch rebuild instead of silently removing the handle being replaced.
+        for (auto child : children)
+            for (auto affected : nodeSystem_.ops.collectRemovalClosure(child))
+                if (nodeSystem_.ops.isUnder(id, affected))
+                    throw Exception<NodeFactory>("Slot replacement would retire its owner; rebuild the owning branch");
+        for (auto dependent : dependents)
+            if (nodeSystem_.ops.isUnder(id, dependent))
+                throw Exception<NodeFactory>("Slot replacement would retire its owner; rebuild the owning branch");
+        nodeSystem_.registry.require(id).object.building = true;
+        nodeSystem_.exports.remove(id);
+        if (const auto scope = nodeSystem_.context.findScope(id); scope != InvalidContextScopeId)
+            nodeSystem_.context.destroyScope(scope);
+        for (auto dependent : dependents)
+            nodeSystem_.ops.retireBranch(dependent);
+        for (auto child : children)
+            nodeSystem_.ops.retireBranch(child);
+        if (!children.empty() || !dependents.empty())
+            return false;
+    }
+
+    for (NodeId dependent : nodeSystem_.dependencies.dependents(id))
+        if (nodeSystem_.dependencies.retained(dependent, id))
+            throw Exception<NodeFactory>("Cannot replace slot #{} while constructor/export dependencies exist", id);
 
     nodeSystem_.ops.clearContents(id);
+    nodeSystem_.dependencies.clearDependencies(id);
+    nodeSystem_.exports.remove(id);
+    if (const auto scope = nodeSystem_.context.findScope(id); scope != InvalidContextScopeId)
+        nodeSystem_.context.destroyScope(scope);
     try {
-        constructObject(id, impl, nullptr);
+        constructObject(id, impl);
     } catch (...) {
         nodeSystem_.ops.clearContents(id);
+        nodeSystem_.dependencies.clearDependencies(id);
+        nodeSystem_.exports.remove(id);
+        if (const auto scope = nodeSystem_.context.findScope(id); scope != InvalidContextScopeId)
+            nodeSystem_.context.destroyScope(scope);
         throw;
     }
+    return true;
 }
 
 void NodeFactory::share(NodeId id, BlueprintId api) {
@@ -234,140 +302,6 @@ NodeId NodeFactory::binding(NodeId parent, std::string_view name) {
     }
 
     return createNode(parent, name, InvalidBlueprintId, NodeKind::Binding);
-}
-
-NodeId NodeFactory::resource(
-    NodeId target,
-    BlueprintId api,
-    std::string_view instance,
-    const void* desc,
-    uint64_t discriminator
-) {
-    nodeSystem_.registry.require(target);
-    nodeSystem_.blueprints.require(api);
-
-    if (const NodeId existing = nodeSystem_.registry.find(instance, target, api, discriminator);
-        existing != InvalidNodeId) {
-        const auto& node = nodeSystem_.registry.require(existing);
-        if (node.state == NodeState::Retiring)
-            throw Exception<NodeFactory>("Node #{} is retiring", existing);
-        if (node.kind == NodeKind::Component && node.bp == api && node.object.ptr)
-            return existing;
-        throw Exception<NodeFactory>("Mounted resource '{}' has an invalid node", instance);
-    }
-
-    const BlueprintId impl = nodeSystem_.blueprints.resolveImplementation(api);
-    const NodeId id = createNode(target, instance, api, NodeKind::Component, discriminator);
-    try {
-        constructObject(id, impl, desc);
-    } catch (...) {
-        nodeSystem_.ops.destroyBranch(id);
-        throw;
-    }
-
-    return id;
-}
-
-NodeId NodeFactory::reference(
-    NodeId caller,
-    NodeId target,
-    BlueprintId api,
-    std::string_view instance,
-    NodeKind kind
-) {
-    if (nodeSystem_.registry.require(caller).state == NodeState::Retiring)
-        throw Exception<NodeFactory>("Cannot create a reference for retiring node #{}", caller);
-    const auto& physical = nodeSystem_.registry.require(target);
-
-    if (physical.state == NodeState::Retiring)
-        throw Exception<NodeFactory>("Cannot reference retiring node #{}", target);
-
-    if (kind != NodeKind::Mount && kind != NodeKind::SharedMount)
-        throw Exception<NodeFactory>("Invalid mount reference kind");
-
-    if (!nodeSystem_.blueprints.isA(physical.object.bp, api))
-        throw Exception<NodeFactory>("Mounted object does not implement requested API");
-
-    const uint64_t discriminator = physical.parent;
-    if (const NodeId existing = nodeSystem_.registry.find(instance, caller, api, discriminator);
-        existing != InvalidNodeId) {
-        const auto& node = nodeSystem_.registry.require(existing);
-        if (node.kind == kind && node.relation == target)
-            return existing;
-        throw Exception<NodeFactory>("Node '{}' already exists under caller #{}", instance, caller);
-    }
-
-    const NodeId id = createNode(caller, instance, api, kind, discriminator);
-    nodeSystem_.registry.link(id, target);
-    nodeSystem_.dependencies.add(caller, target);
-    return id;
-}
-
-NodeId NodeFactory::addLocal(
-    NodeId caller,
-    NodeId target,
-    BlueprintId api,
-    std::string_view instance,
-    const void* desc
-) {
-    nodeSystem_.registry.require(caller);
-    nodeSystem_.registry.require(target);
-
-    if (const NodeId existing = nodeSystem_.registry.find(instance, caller, api, target);
-        existing != InvalidNodeId) {
-        const auto& referenceNode = nodeSystem_.registry.require(existing);
-        if (referenceNode.kind == NodeKind::Mount &&
-            nodeSystem_.registry.get(referenceNode.relation) &&
-            nodeSystem_.registry.require(referenceNode.relation).parent == target)
-            return referenceNode.relation;
-        throw Exception<NodeFactory>("Local resource '{}' conflicts under caller #{}", instance, caller);
-    }
-
-    const uint64_t discriminator = caller;
-    const bool created = nodeSystem_.registry.find(instance, target, api, discriminator) == InvalidNodeId;
-    const NodeId physical = resource(target, api, instance, desc, discriminator);
-
-    try {
-        reference(caller, physical, api, instance, NodeKind::Mount);
-    } catch (...) {
-        if (created && nodeSystem_.registry.get(physical))
-            nodeSystem_.ops.destroyBranch(physical);
-        throw;
-    }
-    return physical;
-}
-
-NodeId NodeFactory::addShare(
-    NodeId caller,
-    NodeId target,
-    BlueprintId api,
-    std::string_view instance,
-    const void* desc
-) {
-    nodeSystem_.registry.require(caller);
-    nodeSystem_.registry.require(target);
-
-    if (const NodeId existing = nodeSystem_.registry.find(instance, caller, api, target);
-        existing != InvalidNodeId) {
-        const auto& referenceNode = nodeSystem_.registry.require(existing);
-        if (referenceNode.kind == NodeKind::SharedMount &&
-            nodeSystem_.registry.get(referenceNode.relation) &&
-            nodeSystem_.registry.require(referenceNode.relation).parent == target)
-            return referenceNode.relation;
-        throw Exception<NodeFactory>("Shared resource '{}' conflicts under caller #{}", instance, caller);
-    }
-
-    const bool created = nodeSystem_.registry.find(instance, target, api, SharedIdentity) == InvalidNodeId;
-    const NodeId physical = resource(target, api, instance, desc, SharedIdentity);
-
-    try {
-        reference(caller, physical, api, instance, NodeKind::SharedMount);
-    } catch (...) {
-        if (created && nodeSystem_.registry.get(physical))
-            nodeSystem_.ops.destroyBranch(physical);
-        throw;
-    }
-    return physical;
 }
 
 }

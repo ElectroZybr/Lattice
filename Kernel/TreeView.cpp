@@ -84,8 +84,7 @@ TreeNodeInfo TreeView::info(NodeId id) const {
         .kind = node.kind,
         .state = node.state,
         .name = node.name,
-        .hasObject = node.object.ptr != nullptr,
-        .configured = node.object.configured
+        .hasObject = node.object.ptr != nullptr
     };
 
     if (node.bp != InvalidBlueprintId)

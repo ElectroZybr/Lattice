@@ -1,5 +1,5 @@
 #include <Lattice/Tools/Tests.hpp>
-#include <Lattice/Tools/LogMode.hpp>
+#include <Logger/LogMode.hpp>
 
 
 struct LogInvariantFixture : Lattice::Fixture {};

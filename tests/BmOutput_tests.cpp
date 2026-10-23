@@ -1,5 +1,5 @@
-#include <Lattice/Tools/BmRunner/Output.hpp>
-#include <Lattice/Tools/BmRunner/Metrics/Time.hpp>
+#include <BmRunner/Output.hpp>
+#include <BmRunner/Metrics/Time.hpp>
 #include <Lattice/Tools/Tests.hpp>
 
 namespace Lattice {

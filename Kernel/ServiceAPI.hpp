@@ -3,8 +3,10 @@
 #include <Lattice/Kernel/Consts.hpp>
 #include <Lattice/Kernel/Visibility.hpp>
 
-#include <thread>
 #include <atomic>
+#include <functional>
+#include <thread>
+#include <utility>
 
 namespace Lattice {
 class NodeOps;
@@ -15,7 +17,8 @@ enum class ServiceLaunch {
     Host
 };
 
-struct LATTICE_API ServiceAPI : public Lattice::Component {
+// Kernel-internal service base; packages declare services with ObjectBuild::service.
+struct LATTICE_API ServiceAPI {
     ServiceAPI() = default;
     ServiceAPI(const ServiceAPI&) = delete;
     ServiceAPI& operator=(const ServiceAPI&) = delete;
@@ -71,3 +74,40 @@ private:
     Lattice::NodeOps* hostOps_ = nullptr;
     bool host_ = false;
 };
+
+
+namespace Lattice {
+
+/**
+ * Runs an ordinary object as a service declared by composition (ObjectBuild::service).
+ *
+ * The object does not inherit ServiceAPI. `run` receives an idle callback that the
+ * object may call periodically; for a host service it services the runtime
+ * (maintain), for a worker it is a no-op. `stop` asks `run` to return.
+ */
+class ServiceRunner final : public ServiceAPI {
+public:
+    using Idle = std::function<void()>;
+
+    ServiceRunner(std::function<void(const Idle&)> run, std::function<void()> stop)
+        : run_(std::move(run)), stop_(std::move(stop)) {}
+
+    // ServiceAPI's destructor cannot reach the overridden requestStop.
+    ~ServiceRunner() override { stop(); }
+
+protected:
+    void run() override {
+        run_([this] { static_cast<void>(stopRequested()); });
+    }
+
+    void requestStop() override {
+        ServiceAPI::requestStop();
+        stop_();
+    }
+
+private:
+    std::function<void(const Idle&)> run_;
+    std::function<void()> stop_;
+};
+
+}

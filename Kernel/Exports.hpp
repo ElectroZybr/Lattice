@@ -15,7 +15,7 @@
 #include <Lattice/Tools/Exception.hpp>
 #include <Lattice/Tools/TypeName.hpp>
 #include <Lattice/Kernel/Value.hpp>
-#include <Lattice/Tools/Logger.hpp>
+#include <Logger/Logger.hpp>
 #include "Lattice/Tools/TreeFormatter.hpp"
 
 namespace Lattice {

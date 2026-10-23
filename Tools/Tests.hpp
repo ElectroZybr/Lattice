@@ -6,7 +6,7 @@
 #include <vector>
 #include <utility>
 
-#include <Lattice/Tools/LogMode.hpp>
+#include <Logger/LogMode.hpp>
 #include <Lattice/Kernel/Visibility.hpp>
 #include "Lattice/Tools/Fixture.hpp"
 

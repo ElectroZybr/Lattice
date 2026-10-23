@@ -4,7 +4,7 @@
 #include <vector>
 
 #include <Lattice/Kernel/DynamicLibrary.hpp>
-#include <Lattice/Tools/Logger.hpp>
+#include <Logger/Logger.hpp>
 
 
 class DLLoader {

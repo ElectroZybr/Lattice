@@ -2,7 +2,7 @@
 #include <memory>
 #include <thread>
 
-#include <Lattice/Tools/BmRunner/Metrics/MemoryTraffic.hpp>
+#include <BmRunner/Metrics/MemoryTraffic.hpp>
 #include <Lattice/Tools/Tests.hpp>
 
 namespace Lattice {

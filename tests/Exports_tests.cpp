@@ -103,7 +103,7 @@ TEST(Exports_LocalScopeIsCreatedLazily, RuntimeFixture,
     const ContextScopeId scope = nodes.context.findScope(branch);
     REQUIRE(scope != InvalidContextScopeId);
 
-    ExportsView exports = nodes.configure(branch).exports();
+    ExportsView exports = fixture.build(branch).exports();
     const RoleId role = exports.role("local");
     REQUIRE(!exports.resolve(role, fixture.root));
 
@@ -124,7 +124,7 @@ TEST(Exports_GlobalDoesNotCreateOwnerScope, RuntimeFixture,
     fixture.build(owner).globalAction("global", [&] { invoked = true; });
     REQUIRE(nodes.context.findScope(owner) == InvalidContextScopeId);
 
-    ExportsView exports = nodes.configure(branch).exports();
+    ExportsView exports = fixture.build(branch).exports();
     const RoleId role = exports.role("global");
     ResolvedExport global = exports.resolve(role, branch);
     REQUIRE(global.invoke != nullptr);
@@ -153,7 +153,7 @@ TEST(Exports_LocalShadowsGlobal, RuntimeFixture,
     const ExportId globalId = fixture.build(globalOwner).globalAction("select", [&] { selected = 1; });
     const ExportId localId = fixture.build(branch).action("select", [&] { selected = 2; });
 
-    ExportsView exports = nodes.configure(branch).exports();
+    ExportsView exports = fixture.build(branch).exports();
     const RoleId role = exports.role("select");
 
     ActionContext rootContext{fixture.root};
@@ -190,7 +190,7 @@ TEST(Exports_GlobalAliasSharesExport, RuntimeFixture,
     const ExportId target = build.globalAction("quit", [&] { ++invoked; });
     build.globalAlias("exit", target);
 
-    ExportsView exports = nodes.configure(branch).exports();
+    ExportsView exports = fixture.build(branch).exports();
     ResolvedExport quit = exports.resolve(exports.role("quit"), branch);
     ResolvedExport exit = exports.resolve(exports.role("exit"), branch);
 

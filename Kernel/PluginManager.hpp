@@ -28,7 +28,6 @@ public:
     const std::vector<Plugin*>& queue() const { return loadQueue; }
 
 private:
-    PluginManifest parseManifest(std::filesystem::path path);
     bool canLoad(const std::string& id);
     bool prepareLoad(const std::string& id);
     bool loadPlugin(Plugin* candidate);

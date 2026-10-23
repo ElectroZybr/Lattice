@@ -2,7 +2,6 @@
 
 #include <span>
 #include <string_view>
-#include <unordered_map>
 #include <vector>
 
 #include <Lattice/Kernel/Node.hpp>
@@ -13,12 +12,13 @@ namespace Lattice {
 class NodeRegistry : public ObjectRegistry<Node, NodeId, NodeKey, NodeKeyHash> {
     using Base = ObjectRegistry<Node, NodeId, NodeKey, NodeKeyHash>;
     std::vector<std::vector<NodeId>> children_;
-    std::unordered_map<NodeId, std::vector<NodeId>> references_;
+    std::vector<uint64_t> generations_;
+    uint64_t nextGeneration_ = 1;
     
 public:
     void clear() {
         children_.clear();
-        references_.clear();
+        generations_.clear();
         Base::clear();
     }
     
@@ -29,8 +29,11 @@ public:
         NodeKey key{node.name, node.parent, node.bp, discriminator};
         const NodeId id = Base::create(std::move(node), std::move(key));
 
-        if (id >= children_.size())
+        if (id >= children_.size()) {
             children_.resize(id + 1);
+            generations_.resize(id + 1);
+        }
+        generations_[id] = nextGeneration_++;
 
         const NodeId parent = require(id).parent;
         if (parent != InvalidNodeId)
@@ -39,6 +42,11 @@ public:
         children_[id].clear();
 
         return id;
+    }
+
+    uint64_t generation(NodeId id) const {
+        require(id);
+        return generations_[id];
     }
 
     NodeId find(
@@ -55,39 +63,6 @@ public:
         return children_[id];
     }
 
-    void link(NodeId reference, NodeId target) {
-        auto& node = require(reference);
-        require(target);
-
-        if (node.relation == target)
-            return;
-
-        unlink(reference);
-        node.relation = target;
-        references_[target].push_back(reference);
-    }
-
-    void unlink(NodeId reference) {
-        auto& node = require(reference);
-        const NodeId target = node.relation;
-        if (target == InvalidNodeId)
-            return;
-
-        if (auto found = references_.find(target); found != references_.end()) {
-            std::erase(found->second, reference);
-            if (found->second.empty())
-                references_.erase(found);
-        }
-
-        node.relation = InvalidNodeId;
-    }
-
-    std::span<const NodeId> references(NodeId target) const {
-        require(target);
-        const auto found = references_.find(target);
-        return found == references_.end() ? std::span<const NodeId>{} : found->second;
-    }
-
     void destroy(NodeId id) {
         const NodeId parent = require(id).parent;
 
@@ -100,15 +75,6 @@ public:
         if (parent != InvalidNodeId) {
             auto& siblings = children_[parent];
             std::erase(siblings, id);
-        }
-
-        unlink(id);
-
-        if (auto found = references_.find(id); found != references_.end()) {
-            for (NodeId reference : found->second)
-                if (auto* node = get(reference); node && node->relation == id)
-                    node->relation = InvalidNodeId;
-            references_.erase(found);
         }
 
         Base::destroy(id);

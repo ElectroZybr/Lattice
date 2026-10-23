@@ -1,0 +1,16 @@
+target("Lattice.example.package")
+    set_kind("shared")
+    set_basename("Example")
+    set_targetdir("$(builddir)/examples/composition-package")
+    add_files("compose.cpp")
+    add_deps("Lattice")
+
+target("Lattice.example.composition")
+    set_kind("binary")
+    add_files("main.cpp")
+    add_deps("Lattice.example.package", {inherit = false})
+    -- Link the runtime, but discover the example package through its metadata.
+    add_deps("Lattice")
+    on_config(function (target)
+        target:set("runargs", path.join(path.absolute(get_config("builddir") or "build", os.projectdir()), "examples", "composition-package"))
+    end)

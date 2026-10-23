@@ -1,6 +1,7 @@
 #pragma once
 
 #include <initializer_list>
+#include <functional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -11,22 +12,19 @@
 #include <Lattice/Tools/ObjectRegistry.hpp>
 
 class NodeBuild;
-class NodeConfigure;
 
 namespace Lattice {
 
 struct BlueprintOps {
     void (*destroy)(void*) = nullptr;
     void (*deallocate)(void*) = nullptr;
-    void (*retire)(void*) = nullptr;
-    bool (*readyToDestroy)(const void*) = nullptr;
 };
 
 struct BlueprintMeta {
-    std::string_view descriptor;
+    void (*compose)(::NodeBuild) = nullptr;
+    // Slot composition owns a subtree and returns the node exposing its API.
+    std::function<NodeId(::NodeBuild&)> composeSlot;
     void* (*allocate)() = nullptr;
-    void (*construct)(void*, ::NodeBuild, const void*) = nullptr;
-    void (*configure)(void*, ::NodeConfigure) = nullptr;
     const BlueprintOps* ops = nullptr;
 };
 
@@ -44,6 +42,8 @@ class LATTICE_API Blueprints : public ObjectRegistry<Blueprint, BlueprintId, std
     using Base = ObjectRegistry<Blueprint, BlueprintId, std::string>;
 
 public:
+    BlueprintId addComposition(std::string_view name, void (*compose)(::NodeBuild));
+
     BlueprintId add(
         std::string_view name,
         std::initializer_list<BlueprintId> bases = {}
@@ -51,8 +51,7 @@ public:
 
     BlueprintId resolveImplementation(
         BlueprintId api,
-        std::string_view nameSpace = {},
-        std::string_view descriptor = {}
+        std::string_view nameSpace = {}
     ) const;
 
     BlueprintId find(
@@ -67,11 +66,6 @@ public:
     void addBase(BlueprintId derived, BlueprintId base);
 
     bool isA(BlueprintId derived, BlueprintId base) const;
-
-    std::vector<BlueprintId> getImpls(
-        BlueprintId api,
-        bool constructibleOnly = true
-    ) const;
 
     void dumpTree() const;
 

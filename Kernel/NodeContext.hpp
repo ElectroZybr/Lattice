@@ -82,7 +82,11 @@ public:
     void removeCandidate(ContextScopeId scope, RoleId role, NodeId target);
     void removeTarget(NodeId target);
 
-    // explicit choice / focus
+    /**
+     * Explicit focus/selection is separate from candidates. set() accepts only a
+     * live candidate visible through this scope; reset() removes the local target.
+     * Neither operation rewires object references or rebuilds dependent branches.
+     */
     void set(ContextScopeId scope, RoleId role, NodeId target);
     void reset(ContextScopeId scope, RoleId role);
 

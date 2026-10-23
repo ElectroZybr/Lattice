@@ -1,5 +1,4 @@
 #include <Lattice/Kernel/NodeQuery.hpp>
-#include <Lattice/Kernel/NodeViews.hpp>
 
 #include <Lattice/Kernel/Blueprints.hpp>
 #include <Lattice/Tools/Exception.hpp>
@@ -13,10 +12,6 @@ bool NodeQuery::provides(NodeId id, BlueprintId api) const {
 
     if (node.state == NodeState::Retiring)
         return false;
-
-    if ((node.kind == NodeKind::Mount || node.kind == NodeKind::SharedMount) &&
-        node.relation != InvalidNodeId)
-        return provides(node.relation, api);
 
     return blueprints_.isA(node.bp, api) ||
            blueprints_.isA(node.object.bp, api);
@@ -76,51 +71,23 @@ NodeId NodeQuery::require(NodeId from, std::string_view api, std::string_view in
     return require(from, id, instance);
 }
 
-NodeId NodeQuery::ancestor(NodeId from, BlueprintId api) const {
-    blueprints_.require(api);
-
-    for (NodeId current = registry_.require(from).parent;
-         current != InvalidNodeId;
-         current = registry_.require(current).parent) {
-        const auto& node = registry_.require(current);
-        if (node.state != NodeState::Retiring && node.object.ptr &&
-            blueprints_.isA(node.object.bp, api))
-            return current;
-    }
-
-    return InvalidNodeId;
-}
-
-void* NodeQuery::resolveAncestor(NodeId from, NodeId ancestorId, BlueprintId api) const {
-    blueprints_.require(api);
-
-    for (NodeId current = registry_.require(from).parent;
-         current != InvalidNodeId;
-         current = registry_.require(current).parent) {
-        if (current != ancestorId)
-            continue;
-
-        const auto& ancestor = registry_.require(current);
-        if (ancestor.state == NodeState::Retiring || !ancestor.object.ptr)
-            return nullptr;
-        return blueprints_.cast(ancestor.object.bp, api, ancestor.object.ptr);
-    }
-
-    return nullptr;
-}
-
 std::vector<NodeId> NodeQuery::collect(NodeId from, BlueprintId api) const {
     registry_.require(from);
     blueprints_.require(api);
 
     std::vector<NodeId> result;
+    std::vector<NodeId> slotObjects;
 
     auto walk = [&](auto&& self, NodeId current) -> void {
         if (registry_.require(current).state == NodeState::Retiring)
             return;
 
-        if (provides(current, api))
+        if (provides(current, api) && std::ranges::find(slotObjects, current) == slotObjects.end()) {
             result.push_back(current);
+            const auto& node = registry_.require(current);
+            if (node.kind == NodeKind::Slot && node.relation != InvalidNodeId)
+                slotObjects.push_back(objectNode(current));
+        }
 
         for (NodeId child : registry_.children(current))
             self(self, child);
@@ -140,21 +107,20 @@ std::vector<NodeId> NodeQuery::collect(NodeId from, std::string_view api) const 
     return collect(from, id);
 }
 
+NodeId NodeQuery::objectNode(NodeId id) const {
+    const auto* node = registry_.get(id);
+    if (!node || node->state == NodeState::Retiring || node->object.building)
+        return InvalidNodeId;
+    if (node->kind == NodeKind::Slot && node->relation != InvalidNodeId)
+        return objectNode(node->relation);
+    return node->object.ptr ? id : InvalidNodeId;
+}
+
 void* NodeQuery::resolve(NodeId id, BlueprintId api) const {
-    const auto& node = registry_.require(id);
-
-    if (node.state == NodeState::Retiring || node.object.building)
+    const auto object = objectNode(id);
+    if (object == InvalidNodeId)
         return nullptr;
-
-    if (node.kind == NodeKind::Mount || node.kind == NodeKind::SharedMount) {
-        if (node.relation == InvalidNodeId)
-            return nullptr;
-        return resolve(node.relation, api);
-    }
-
-    if (!node.object.ptr)
-        return nullptr;
-
+    const auto& node = registry_.require(object);
     return blueprints_.cast(node.object.bp, api, node.object.ptr);
 }
 
@@ -185,13 +151,4 @@ NodeId NodeQuery::shared(NodeId from, BlueprintId api) const {
     return result.target;
 }
 
-}
-
-/*=== NodeConfigure ===*/
-Lattice::NodeId NodeConfigure::findId(std::string_view api, std::string_view instance) const {
-    return nodeSystem_.query.find(id_, api, instance);
-}
-
-Lattice::NodeId NodeConfigure::requireId(std::string_view api, std::string_view instance) const {
-    return nodeSystem_.query.require(id_, api, instance);
 }

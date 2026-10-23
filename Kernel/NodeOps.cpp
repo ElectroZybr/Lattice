@@ -1,15 +1,58 @@
 #include <algorithm>
 #include <exception>
 #include <ranges>
+#include <thread>
+#include <chrono>
 #include <Lattice/Kernel/NodeOps.hpp>
 #include <Lattice/Kernel/NodeRegistry.hpp>
 #include <Lattice/Kernel/NodeViews.hpp>
 #include <Lattice/Kernel/NodeContext.hpp>
 #include <Lattice/Kernel/Blueprints.hpp>
-#include <Lattice/Tools/Logger.hpp>
+#include <Logger/Logger.hpp>
 #include <Lattice/Tools/TreeFormatter.hpp>
 
 namespace Lattice {
+
+void NodeOps::onRetire(NodeId id, std::function<void(void*)> callback) {
+    const auto& node = nodeSystem_.registry.require(id);
+    if (node.state != NodeState::Active || !node.object.constructed)
+        throw Exception<NodeOps>("Lifecycle can only be bound to an active constructed object");
+    if (lifecycle_.size() <= id)
+        lifecycle_.resize(id + 1);
+    lifecycle_[id].retire = std::move(callback);
+}
+
+void NodeOps::readyToDestroy(NodeId id, std::function<bool(const void*)> callback) {
+    const auto& node = nodeSystem_.registry.require(id);
+    if (node.state != NodeState::Active || !node.object.constructed)
+        throw Exception<NodeOps>("Lifecycle can only be bound to an active constructed object");
+    if (lifecycle_.size() <= id)
+        lifecycle_.resize(id + 1);
+    lifecycle_[id].ready = std::move(callback);
+}
+
+void NodeOps::beginRetire(NodeId id) {
+    const auto object = nodeSystem_.registry.require(id).object;
+    if (!object.ptr || !object.constructed)
+        return;
+    if (lifecycle_.size() <= id)
+        lifecycle_.resize(id + 1);
+    if (lifecycle_[id].retireCalled)
+        return;
+    lifecycle_[id].retireCalled = true;
+    // Copy callbacks before invoking user code, which can grow registry storage.
+    const auto callback = lifecycle_[id].retire;
+    if (callback)
+        callback(object.ptr);
+}
+
+bool NodeOps::isReadyToDestroy(NodeId id) const {
+    const auto* node = nodeSystem_.registry.get(id);
+    if (!node || !node->object.ptr || !node->object.constructed)
+        return true;
+    const auto callback = id < lifecycle_.size() ? lifecycle_[id].ready : nullptr;
+    return !callback || callback(node->object.ptr);
+}
 
 NodeId NodeOps::resolvePath(NodeId from, std::string_view path) const {
     NodeId current = from;
@@ -86,24 +129,11 @@ std::vector<NodeId> NodeOps::collectRemovalClosure(NodeId id) const {
 
         for (NodeId child : nodeSystem_.registry.children(root))
             self(self, child);
-
-        if (node->kind == NodeKind::Mount && node->relation != InvalidNodeId)
-            self(self, node->relation);
     };
 
     addBranch(addBranch, id);
 
     for (size_t index = 0; index < result.size(); ++index) {
-        const auto* node = nodeSystem_.registry.get(result[index]);
-        if (node && node->kind == NodeKind::SharedMount &&
-            node->relation != InvalidNodeId) {
-            const auto references = nodeSystem_.registry.references(node->relation);
-            if (std::ranges::all_of(references, [&included](NodeId reference) {
-                    return reference < included.size() && included[reference];
-                }))
-                addBranch(addBranch, node->relation);
-        }
-
         for (NodeId dependent : nodeSystem_.dependencies.dependents(result[index]))
             addBranch(addBranch, dependent);
     }
@@ -117,15 +147,6 @@ void NodeOps::retireBranch(NodeId id) {
 
     std::vector<NodeId> closure = collectRemovalClosure(id);
     std::vector<NodeId> newlyRetiring;
-
-    for (NodeId nodeId : closure) {
-        const auto* node = nodeSystem_.registry.get(nodeId);
-        if (!node || node->parent == InvalidNodeId)
-            continue;
-
-        if (std::ranges::find(closure, node->parent) == closure.end())
-            invalidate(node->parent);
-    }
 
     for (NodeId nodeId : closure) {
         auto* node = nodeSystem_.registry.get(nodeId);
@@ -173,16 +194,10 @@ void NodeOps::retireBranch(NodeId id) {
 
     std::exception_ptr failure;
     for (NodeId nodeId : newlyRetiring | std::views::reverse) {
-        const auto* node = nodeSystem_.registry.get(nodeId);
-        if (!node || !node->object.ptr)
+        if (!nodeSystem_.registry.get(nodeId))
             continue;
-
-        const auto* ops = nodeSystem_.blueprints.require(node->object.bp).meta.ops;
-        if (!ops || !ops->retire)
-            continue;
-
         try {
-            ops->retire(node->object.ptr);
+            beginRetire(nodeId);
         } catch (...) {
             if (!failure)
                 failure = std::current_exception();
@@ -198,13 +213,7 @@ size_t NodeOps::collectRetired() {
 
     for (size_t index = 0; index < retiring_.size();) {
         const auto ready = std::ranges::all_of(retiring_[index], [this](NodeId nodeId) {
-            const auto* node = nodeSystem_.registry.get(nodeId);
-            if (!node || !node->object.ptr)
-                return true;
-
-            const auto* ops = nodeSystem_.blueprints.require(node->object.bp).meta.ops;
-            return !ops || !ops->readyToDestroy ||
-                   ops->readyToDestroy(node->object.ptr);
+            return isReadyToDestroy(nodeId);
         });
 
         if (!ready) {
@@ -226,116 +235,32 @@ size_t NodeOps::collectRetired() {
     return collected;
 }
 
-void NodeOps::invalidate(NodeId id) {
-    if (id == InvalidNodeId)
-        return;
-
-    const auto* node = nodeSystem_.registry.get(id);
-    if (!node || node->state == NodeState::Retiring)
-        return;
-
-    if (std::ranges::find(invalidated_, id) == invalidated_.end())
-        invalidated_.push_back(id);
-}
-
 void NodeOps::maintain() {
     collectRetired();
-
-    std::vector<NodeId> pending;
-    pending.swap(invalidated_);
-
-    for (size_t index = 0; index < pending.size(); ++index) {
-        const NodeId id = pending[index];
-        auto* node = nodeSystem_.registry.get(id);
-        if (!node || node->state == NodeState::Retiring || !node->object.ptr)
-            continue;
-
-        nodeSystem_.dependencies.clearDependencies(id);
-        node->object.configured = false;
-
-        try {
-            configure(id);
-        } catch (...) {
-            for (; index < pending.size(); ++index)
-                invalidate(pending[index]);
-            throw;
-        }
-    }
-}
-
-void NodeOps::configure(NodeId id) {
-    auto& node = nodeSystem_.registry.require(id);
-
-    if (node.state == NodeState::Retiring || !node.object.ptr || node.kind == NodeKind::Mount ||
-        node.kind == NodeKind::SharedMount || node.object.configured)
-        return;
-
-    const auto& blueprint = nodeSystem_.blueprints.require(node.object.bp);
-
-    if (blueprint.meta.configure)
-        blueprint.meta.configure(node.object.ptr, NodeConfigure{id, nodeSystem_});
-
-    nodeSystem_.registry.require(id).object.configured = true;
-}
-
-void NodeOps::configureBranch(NodeId id) {
-    const auto* node = nodeSystem_.registry.get(id);
-    if (!node || node->state == NodeState::Retiring)
-        return;
-
-    if (node->kind == NodeKind::Mount || node->kind == NodeKind::SharedMount) {
-        if (node->relation != InvalidNodeId && nodeSystem_.registry.get(node->relation))
-            configureBranch(node->relation);
-        return;
-    }
-
-    configure(id);
-
-    const auto span = nodeSystem_.registry.children(id);
-    const std::vector<NodeId> children(span.begin(), span.end());
-    for (NodeId child : children) configureBranch(child);
 }
 
 void NodeOps::destroyBranch(NodeId id) {
-    auto* node = nodeSystem_.registry.get(id);
-    if (!node)
+    if (!nodeSystem_.registry.get(id) ||
+        std::ranges::find(destroying_, id) != destroying_.end())
         return;
+    destroying_.push_back(id);
+    struct DestroyGuard {
+        std::vector<NodeId>& active;
+        NodeId id;
+        ~DestroyGuard() { std::erase(active, id); }
+    } guard{destroying_, id};
 
-    if (node->kind == NodeKind::Mount || node->kind == NodeKind::SharedMount) {
-        const NodeKind kind = node->kind;
-        const NodeId target = node->relation;
+    // Retained C++ references must remain valid through consumer destruction,
+    // even when ownership places consumers in an earlier sibling branch.
+    const auto dependentSpan = nodeSystem_.dependencies.dependents(id);
+    const std::vector<NodeId> dependents(dependentSpan.begin(), dependentSpan.end());
+    for (NodeId dependent : dependents)
+        if (nodeSystem_.dependencies.retained(dependent, id) &&
+            nodeSystem_.registry.get(dependent) && !isUnder(id, dependent))
+            destroyBranch(dependent);
 
-        clearContents(id);
-        nodeSystem_.context.removeTarget(id);
-        nodeSystem_.exports.remove(id);
-        if (const ContextScopeId scope = nodeSystem_.context.findScope(id); scope != InvalidContextScopeId)
-            nodeSystem_.context.destroyScope(scope);
-        nodeSystem_.dependencies.removeNode(id);
-        std::erase(invalidated_, id);
-        nodeSystem_.registry.destroy(id);
-
-        if (!nodeSystem_.registry.get(target))
-            return;
-
-        if (kind == NodeKind::Mount) {
-            destroyBranch(target);
-            return;
-        }
-
-        if (nodeSystem_.registry.references(target).empty())
-            destroyBranch(target);
+    if (!nodeSystem_.registry.get(id))
         return;
-    }
-
-    // The physical owner wins over both local and shared logical lifetimes.
-    // Detach all incoming references before destroying the physical object.
-    const auto span = nodeSystem_.registry.references(id);
-    const std::vector<NodeId> references(span.begin(), span.end());
-
-    for (NodeId reference : references) {
-        nodeSystem_.registry.unlink(reference);
-        destroyBranch(reference);
-    }
 
     clearContents(id);
 
@@ -346,20 +271,24 @@ void NodeOps::destroyBranch(NodeId id) {
         nodeSystem_.context.destroyScope(scope);
 
     nodeSystem_.dependencies.removeNode(id);
-    std::erase(invalidated_, id);
     nodeSystem_.registry.destroy(id);
 }
 
 void NodeOps::clearContents(NodeId id) {
+    beginRetire(id);
+    if (id < lifecycle_.size() && lifecycle_[id].ready)
+        while (!isReadyToDestroy(id))
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
     const auto children = std::vector<NodeId>(nodeSystem_.registry.children(id).begin(), nodeSystem_.registry.children(id).end());
 
-    for (NodeId child : children)
+    for (NodeId child : children | std::views::reverse)
         if (nodeSystem_.registry.get(child))
             destroyBranch(child);
 
     auto& node = nodeSystem_.registry.require(id);
 
-    if (node.object.ptr && node.kind != NodeKind::Mount && node.kind != NodeKind::SharedMount) {
+    if (node.object.ptr) {
         const auto& bp = nodeSystem_.blueprints.require(node.object.bp);
 
         if (bp.meta.ops) {
@@ -369,8 +298,13 @@ void NodeOps::clearContents(NodeId id) {
                 bp.meta.ops->deallocate(node.object.ptr);
         }
 
-        node.object = {};
+        nodeSystem_.registry.require(id).object = {};
     }
+    nodeSystem_.registry.require(id).object = {};
+    if (nodeSystem_.registry.require(id).kind == NodeKind::Slot)
+        nodeSystem_.registry.require(id).relation = InvalidNodeId;
+    if (id < lifecycle_.size())
+        lifecycle_[id] = {};
 }
 
 std::string NodeOps::stringPath(NodeId id) const {
@@ -419,7 +353,7 @@ void NodeOps::dumpTree(NodeId id, NodeId highlighted) const {
                     line = std::format("{} <a>F</>", child.name);
                     break;
 
-                case NodeKind::Component: {
+                case NodeKind::Object: {
                     const auto type = nodeSystem_.blueprints.require(child.bp).shortName();
                     line = child.name.empty()
                         ? std::format("{} <ok>C</>", type)
@@ -443,17 +377,6 @@ void NodeOps::dumpTree(NodeId id, NodeId highlighted) const {
                     line = std::format("{} <wrn>λ</>", child.name);
                     break;
 
-                case NodeKind::Mount:
-                    line = child.name.empty()
-                        ? std::format("<a>[&{}]</> <h>&</>", nodeSystem_.blueprints.require(child.bp).shortName())
-                        : std::format("<a>[&{}]</> <h>&</>", child.name);
-                    break;
-
-                case NodeKind::SharedMount:
-                    line = child.name.empty()
-                        ? std::format("<a>[&&{}]</> <h>&&</>", nodeSystem_.blueprints.require(child.bp).shortName())
-                        : std::format("<a>[&&{}]</> <h>&&</>", child.name);
-                    break;
             }
 
             if (childId == highlighted)

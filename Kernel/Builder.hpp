@@ -27,8 +27,7 @@ public:
         NodeId add(
             NodeId parent,
             BlueprintId blueprint,
-            std::string_view instance = DefaultInstanceName,
-            const void* descriptor = nullptr
+            std::string_view instance = DefaultInstanceName
         );
 
         void commit();
@@ -50,13 +49,22 @@ public:
 
     Batch begin() { return Batch{*this}; }
 
+    /**
+     * @brief Build a new branch transactionally.
+     *
+     * Constructor arguments and query collections are snapshots. Context changes
+     * affect subsequent builds, not existing objects. Rebuilding requires del(),
+     * waiting until retirement removes the old branch, then add() again. A failed
+     * new build is rolled back; it does not restore a previously retired branch.
+     */
     NodeId add(
         NodeId parent,
         BlueprintId blueprint,
-        std::string_view instance = DefaultInstanceName,
-        const void* descriptor = nullptr
+        std::string_view instance = DefaultInstanceName
     );
 
+    /// Request retirement of a direct child and its dependent closure.
+    /// The node can remain allocated until lifecycle readiness permits collection.
     void del(NodeId parent, NodeId child);
 
 private:
@@ -68,8 +76,7 @@ private:
     NodeId create(
         NodeId parent,
         BlueprintId blueprint,
-        std::string_view instance,
-        const void* descriptor
+        std::string_view instance
     );
 
     NodeSystem& nodeSystem_;

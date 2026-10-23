@@ -9,11 +9,6 @@ namespace Lattice {
 class TestComponent {
 public:
     int value = 0;
-    bool configured = false;
-
-    void configure(NodeConfigure) {
-        configured = true;
-    }
 };
 
 class TestAPI {
@@ -37,29 +32,28 @@ TEST(Node_DeepTreeLookup, RuntimeFixture,
 Child-ветка должна видеть свои компоненты и компоненты предков.")
 {
     auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<TestComponent>(fixture.run_ctx.blueprints);
 
-    fixture.build(fixture.root).add<TestComponent>("root");
+    fixture.build(fixture.root).emplace<TestComponent>("root");
 
     const NodeId branchA = nodes.factory.folder(fixture.root, "BranchA");
-    fixture.build(branchA).add<TestComponent>("a");
+    fixture.build(branchA).emplace<TestComponent>("a");
 
     const NodeId branchB = nodes.factory.folder(fixture.root, "BranchB");
-    fixture.build(branchB).add<TestComponent>("b");
+    fixture.build(branchB).emplace<TestComponent>("b");
 
     const NodeId branchAChild = nodes.factory.folder(branchA, "BranchAChild");
-    fixture.build(branchAChild).add<TestComponent>("child");
+    fixture.build(branchAChild).emplace<TestComponent>("child");
 
-    REQUIRE(nodes.configure(fixture.root).find<TestComponent>("root").exists());
-    REQUIRE(nodes.configure(branchA).find<TestComponent>("root").exists());
-    REQUIRE(nodes.configure(branchAChild).find<TestComponent>("root").exists());
+    REQUIRE(fixture.build(fixture.root).find<TestComponent>("root").exists());
+    REQUIRE(fixture.build(branchA).find<TestComponent>("root").exists());
+    REQUIRE(fixture.build(branchAChild).find<TestComponent>("root").exists());
 
-    REQUIRE(nodes.configure(branchA).find<TestComponent>("a").exists());
-    REQUIRE(nodes.configure(branchAChild).find<TestComponent>("a").exists());
+    REQUIRE(fixture.build(branchA).find<TestComponent>("a").exists());
+    REQUIRE(fixture.build(branchAChild).find<TestComponent>("a").exists());
 
-    REQUIRE(nodes.configure(branchB).find<TestComponent>("b").exists());
-    REQUIRE(!nodes.configure(branchA).find<TestComponent>("b").exists());
-    REQUIRE(!nodes.configure(fixture.root).find<TestComponent>("missing").exists());
+    REQUIRE(fixture.build(branchB).find<TestComponent>("b").exists());
+    REQUIRE(!fixture.build(branchA).find<TestComponent>("b").exists());
+    REQUIRE(!fixture.build(fixture.root).find<TestComponent>("missing").exists());
 }
 
 TEST(Node_TreeShadowing, RuntimeFixture, 
@@ -67,15 +61,14 @@ TEST(Node_TreeShadowing, RuntimeFixture,
 При этом оба объекта должны оставаться независимыми экземплярами.")
 {
     auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<TestComponent>(fixture.run_ctx.blueprints);
 
-    fixture.build(fixture.root).add<TestComponent>("shared");
+    fixture.build(fixture.root).emplace<TestComponent>("shared");
 
     const NodeId branch = nodes.factory.folder(fixture.root, "branch");
-    fixture.build(branch).add<TestComponent>("shared");
+    fixture.build(branch).emplace<TestComponent>("shared");
 
-    auto rootComponent = nodes.configure(fixture.root).require<TestComponent>("shared");
-    auto branchComponent = nodes.configure(branch).require<TestComponent>("shared");
+    auto rootComponent = fixture.build(fixture.root).require<TestComponent>("shared");
+    auto branchComponent = fixture.build(branch).require<TestComponent>("shared");
 
     REQUIRE(rootComponent);
     REQUIRE(branchComponent);
@@ -87,17 +80,16 @@ TEST(Node_ShadowingDoesNotLeak, RuntimeFixture,
 Поиск из одной ветки не должен случайно находить локальный компонент другой ветки.")
  {
     auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<TestComponent>(fixture.run_ctx.blueprints);
 
-    fixture.build(fixture.root).add<TestComponent>("shared");
+    fixture.build(fixture.root).emplace<TestComponent>("shared");
 
     const NodeId branchA = nodes.factory.folder(fixture.root, "A");
     const NodeId branchB = nodes.factory.folder(fixture.root, "B");
 
-    fixture.build(branchA).add<TestComponent>("shared");
+    fixture.build(branchA).emplace<TestComponent>("shared");
 
-    auto a = nodes.configure(branchA).find<TestComponent>("shared");
-    auto b = nodes.configure(branchB).find<TestComponent>("shared");
+    auto a = fixture.build(branchA).find<TestComponent>("shared");
+    auto b = fixture.build(branchB).find<TestComponent>("shared");
 
     REQUIRE(a.exists());
     REQUIRE(b.exists());
@@ -107,19 +99,18 @@ TEST(Node_ShadowingDoesNotLeak, RuntimeFixture,
 TEST(Node_TreeFolderCollect, RuntimeFixture,
     "Поиск в папке должен возвращать компоненты из текущей папки и всех вложенных папок.") {
     auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<TestComponent>(fixture.run_ctx.blueprints);
 
-    fixture.build(fixture.root).add<TestComponent>("root");
+    fixture.build(fixture.root).emplace<TestComponent>("root");
 
     const NodeId branch = nodes.factory.folder(fixture.root, "branch");
-    fixture.build(branch).add<TestComponent>("a");
-    fixture.build(branch).add<TestComponent>("b");
+    fixture.build(branch).emplace<TestComponent>("a");
+    fixture.build(branch).emplace<TestComponent>("b");
 
     const NodeId child = nodes.factory.folder(branch, "child");
-    fixture.build(child).add<TestComponent>("c");
+    fixture.build(child).emplace<TestComponent>("c");
 
     const NodeId nested = nodes.factory.folder(child, "nested");
-    fixture.build(nested).add<TestComponent>("d");
+    fixture.build(nested).emplace<TestComponent>("d");
 
     auto root = nodes.query.collect(fixture.root, typeKey<TestComponent>());
     auto branchNode = nodes.query.collect(branch, typeKey<TestComponent>());
@@ -136,19 +127,18 @@ TEST(Node_TreeFolderCollect, RuntimeFixture,
 TEST(Node_DirectChildren, RuntimeFixture,
     "children возвращает непосредственных детей, включая папки.") {
     auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<TestComponent>(fixture.run_ctx.blueprints);
 
-    fixture.build(fixture.root).add<TestComponent>("root");
+    fixture.build(fixture.root).emplace<TestComponent>("root");
 
     const NodeId branch = nodes.factory.folder(fixture.root, "branch");
-    fixture.build(branch).add<TestComponent>("a");
-    fixture.build(branch).add<TestComponent>("b");
+    fixture.build(branch).emplace<TestComponent>("a");
+    fixture.build(branch).emplace<TestComponent>("b");
 
     const NodeId child = nodes.factory.folder(branch, "child");
-    fixture.build(child).add<TestComponent>("c");
+    fixture.build(child).emplace<TestComponent>("c");
 
     const NodeId nested = nodes.factory.folder(child, "nested");
-    fixture.build(nested).add<TestComponent>("d");
+    fixture.build(nested).emplace<TestComponent>("d");
 
     auto root = nodes.registry.children(fixture.root);
     auto branchNode = nodes.registry.children(branch);
@@ -164,12 +154,11 @@ TEST(Node_DirectChildren, RuntimeFixture,
 TEST(TreeView_ReadOnlyNavigation, RuntimeFixture,
     "TreeView должен возвращать стабильные id и скопированные подписи без доступа к NodeRegistry.") {
     auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<TestComponent>(fixture.run_ctx.blueprints);
 
     const NodeId branch = nodes.factory.folder(fixture.root, "branch");
-    fixture.build(branch).add<TestComponent>("instance");
+    fixture.build(branch).emplace<TestComponent>("instance");
 
-    const TreeView tree = nodes.configure(branch).tree();
+    const TreeView tree = fixture.build(branch).tree();
     const auto children = tree.children(branch);
 
     REQUIRE(tree.contains(fixture.root));
@@ -184,13 +173,12 @@ TEST(TreeView_ReadOnlyNavigation, RuntimeFixture,
     const TreeNodeInfo component = tree.info(children.front());
     REQUIRE(component.id == children.front());
     REQUIRE(component.parent == branch);
-    REQUIRE(component.kind == NodeKind::Component);
+    REQUIRE(component.kind == NodeKind::Object);
     REQUIRE(component.name == "instance");
     REQUIRE(component.type == "TestComponent");
     REQUIRE(component.blueprint == nodes.blueprints.id<TestComponent>());
     REQUIRE(component.implementationBlueprint == nodes.blueprints.id<TestComponent>());
     REQUIRE(component.hasObject);
-    REQUIRE(!component.configured);
 
     std::vector<TreeEntry> subtree;
     for (const TreeEntry entry : tree.subtree(fixture.root))
@@ -208,69 +196,52 @@ TEST(TreeView_ReadOnlyNavigation, RuntimeFixture,
 TEST(TreeView_NodeMetadata, RuntimeFixture,
     "TreeView должен различать объявленный API слота и выбранную реализацию.") {
     auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<TestAPI>(fixture.run_ctx.blueprints);
-    BlueprintRegister::add<TestImplA, TestAPI>(fixture.run_ctx.blueprints);
 
     auto slot = fixture.build(fixture.root).addSlot<TestAPI>("selected");
-    slot.choice<TestImplA>();
+    slot.choice("Tree::ImplA", +[](::NodeBuild& branch) {
+        return branch.emplace<TestImplA, TestAPI>("impl");
+    });
 
-    const TreeNodeInfo info = nodes.configure(fixture.root).tree().info(slot.id());
+    const TreeNodeInfo info = fixture.build(fixture.root).tree().info(slot.id());
     REQUIRE(info.kind == NodeKind::Slot);
     REQUIRE(info.name == "selected");
     REQUIRE(info.type == "TestAPI");
-    REQUIRE(info.implementation == "TestImplA");
+    REQUIRE(info.implementation == "ImplA");
     REQUIRE(info.blueprint == nodes.blueprints.id<TestAPI>());
-    REQUIRE(info.implementationBlueprint == nodes.blueprints.id<TestImplA>());
-    REQUIRE(info.hasObject);
-}
-
-TEST(Node_AddImpls, RuntimeFixture,
-    "addImpls возвращает реализации API; collect различает конкретные типы.")
-{
-    auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<TestAPI>(fixture.run_ctx.blueprints);
-    BlueprintRegister::add<TestImplA, TestAPI>(fixture.run_ctx.blueprints);
-    BlueprintRegister::add<TestImplB, TestAPI>(fixture.run_ctx.blueprints);
-
-    auto impls = fixture.build(fixture.root).addImpls<TestAPI>();
-
-    auto exactA = nodes.query.collect(fixture.root, typeKey<TestImplA>());
-    auto nested = nodes.registry.children(nodes.factory.folder(fixture.root, "nested"));
-
-    REQUIRE(impls.size() == 2);
-    REQUIRE(exactA.size() == 1);
-    REQUIRE(nested.empty());
+    REQUIRE(info.implementationBlueprint == nodes.blueprints.find("Tree::ImplA"));
+    // The composed object lives in the slot subtree, not on the slot node.
+    REQUIRE(!info.hasObject);
+    REQUIRE(slot.get() != nullptr);
 }
 
 TEST(Node_GlobalCollectDeepTree, RuntimeFixture,
     "globalCollect должен найти каждый компонент во всём дереве независимо от глубины и ветки.")
 {
     auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<TestComponent>(fixture.run_ctx.blueprints);
 
-    fixture.build(fixture.root).add<TestComponent>("root");
+    fixture.build(fixture.root).emplace<TestComponent>("root");
 
     const NodeId branchA = nodes.factory.folder(fixture.root, "A");
-    fixture.build(branchA).add<TestComponent>("a");
+    fixture.build(branchA).emplace<TestComponent>("a");
 
     const NodeId branchB = nodes.factory.folder(fixture.root, "B");
-    fixture.build(branchB).add<TestComponent>("b");
+    fixture.build(branchB).emplace<TestComponent>("b");
 
     const NodeId childA = nodes.factory.folder(branchA, "ChildA");
-    fixture.build(childA).add<TestComponent>("aa");
+    fixture.build(childA).emplace<TestComponent>("aa");
 
     const NodeId childB = nodes.factory.folder(branchB, "ChildB");
-    fixture.build(childB).add<TestComponent>("bb");
+    fixture.build(childB).emplace<TestComponent>("bb");
 
     const NodeId deep = nodes.factory.folder(childA, "Deep");
-    fixture.build(deep).add<TestComponent>("aaa");
+    fixture.build(deep).emplace<TestComponent>("aaa");
 
-    auto rootComponent = nodes.configure(fixture.root).require<TestComponent>("root");
-    auto a = nodes.configure(branchA).require<TestComponent>("a");
-    auto b = nodes.configure(branchB).require<TestComponent>("b");
-    auto aa = nodes.configure(childA).require<TestComponent>("aa");
-    auto bb = nodes.configure(childB).require<TestComponent>("bb");
-    auto aaa = nodes.configure(deep).require<TestComponent>("aaa");
+    auto rootComponent = fixture.build(fixture.root).require<TestComponent>("root");
+    auto a = fixture.build(branchA).require<TestComponent>("a");
+    auto b = fixture.build(branchB).require<TestComponent>("b");
+    auto aa = fixture.build(childA).require<TestComponent>("aa");
+    auto bb = fixture.build(childB).require<TestComponent>("bb");
+    auto aaa = fixture.build(deep).require<TestComponent>("aaa");
 
     auto result = nodes.query.collect(nodes.ops.root(deep), typeKey<TestComponent>());
 
@@ -288,22 +259,21 @@ TEST(Node_GlobalCollectDifferentInstances, RuntimeFixture,
     "globalCollect должен возвращать все экземпляры одного типа независимо от их имён.")
 {
     auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<TestComponent>(fixture.run_ctx.blueprints);
 
-    fixture.build(fixture.root).add<TestComponent>("one");
-    fixture.build(fixture.root).add<TestComponent>("two");
-    fixture.build(fixture.root).add<TestComponent>("three");
+    fixture.build(fixture.root).emplace<TestComponent>("one");
+    fixture.build(fixture.root).emplace<TestComponent>("two");
+    fixture.build(fixture.root).emplace<TestComponent>("three");
 
     const NodeId branch = nodes.factory.folder(fixture.root, "branch");
 
-    fixture.build(branch).add<TestComponent>("four");
-    fixture.build(branch).add<TestComponent>("five");
+    fixture.build(branch).emplace<TestComponent>("four");
+    fixture.build(branch).emplace<TestComponent>("five");
 
-    auto one = nodes.configure(fixture.root).require<TestComponent>("one");
-    auto two = nodes.configure(fixture.root).require<TestComponent>("two");
-    auto three = nodes.configure(fixture.root).require<TestComponent>("three");
-    auto four = nodes.configure(branch).require<TestComponent>("four");
-    auto five = nodes.configure(branch).require<TestComponent>("five");
+    auto one = fixture.build(fixture.root).require<TestComponent>("one");
+    auto two = fixture.build(fixture.root).require<TestComponent>("two");
+    auto three = fixture.build(fixture.root).require<TestComponent>("three");
+    auto four = fixture.build(branch).require<TestComponent>("four");
+    auto five = fixture.build(branch).require<TestComponent>("five");
 
     auto result = nodes.query.collect(nodes.ops.root(fixture.root), typeKey<TestComponent>());
 
@@ -320,16 +290,15 @@ TEST(Node_GlobalCollectSameNames, RuntimeFixture,
     "globalCollect должен различать объекты с одинаковыми именами в разных ветках.")
 {
     auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<TestComponent>(fixture.run_ctx.blueprints);
 
     const NodeId branchA = nodes.factory.folder(fixture.root, "A");
     const NodeId branchB = nodes.factory.folder(fixture.root, "B");
 
-    fixture.build(branchA).add<TestComponent>("shared");
-    fixture.build(branchB).add<TestComponent>("shared");
+    fixture.build(branchA).emplace<TestComponent>("shared");
+    fixture.build(branchB).emplace<TestComponent>("shared");
 
-    auto a = nodes.configure(branchA).require<TestComponent>("shared");
-    auto b = nodes.configure(branchB).require<TestComponent>("shared");
+    auto a = fixture.build(branchA).require<TestComponent>("shared");
+    auto b = fixture.build(branchB).require<TestComponent>("shared");
 
     auto result = nodes.query.collect(nodes.ops.root(fixture.root), typeKey<TestComponent>());
 
@@ -345,23 +314,22 @@ TEST(Node_GlobalCollectFromDeepNode, RuntimeFixture,
     "globalCollect должен искать от корня независимо от того, из какого узла он вызван.")
 {
     auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<TestComponent>(fixture.run_ctx.blueprints);
 
-    fixture.build(fixture.root).add<TestComponent>("root");
+    fixture.build(fixture.root).emplace<TestComponent>("root");
 
     const NodeId branchA = nodes.factory.folder(fixture.root, "A");
-    fixture.build(branchA).add<TestComponent>("a");
+    fixture.build(branchA).emplace<TestComponent>("a");
 
     const NodeId branchB = nodes.factory.folder(fixture.root, "B");
-    fixture.build(branchB).add<TestComponent>("b");
+    fixture.build(branchB).emplace<TestComponent>("b");
 
     const NodeId deep = nodes.factory.folder(branchA, "Deep");
-    fixture.build(deep).add<TestComponent>("deep");
+    fixture.build(deep).emplace<TestComponent>("deep");
 
-    auto rootComponent = nodes.configure(fixture.root).require<TestComponent>("root");
-    auto a = nodes.configure(branchA).require<TestComponent>("a");
-    auto b = nodes.configure(branchB).require<TestComponent>("b");
-    auto deepComponent = nodes.configure(deep).require<TestComponent>("deep");
+    auto rootComponent = fixture.build(fixture.root).require<TestComponent>("root");
+    auto a = fixture.build(branchA).require<TestComponent>("a");
+    auto b = fixture.build(branchB).require<TestComponent>("b");
+    auto deepComponent = fixture.build(deep).require<TestComponent>("deep");
 
     auto result = nodes.query.collect(nodes.ops.root(deep), typeKey<TestComponent>());
 
@@ -377,19 +345,16 @@ TEST(Node_GlobalCollectByRole, RuntimeFixture,
     "globalCollect должен находить все объекты, реализующие интерфейс, независимо от concrete-типа.")
 {
     auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<TestAPI>(fixture.run_ctx.blueprints);
-    BlueprintRegister::add<TestImplA, TestAPI>(fixture.run_ctx.blueprints);
-    BlueprintRegister::add<TestImplB, TestAPI>(fixture.run_ctx.blueprints);
 
-    fixture.build(fixture.root).add<TestImplA>("a");
-    fixture.build(fixture.root).add<TestImplB>("b");
+    fixture.build(fixture.root).emplace<TestImplA, TestAPI>("a");
+    fixture.build(fixture.root).emplace<TestImplB, TestAPI>("b");
 
     const NodeId branch = nodes.factory.folder(fixture.root, "branch");
-    fixture.build(branch).add<TestImplA>("c");
+    fixture.build(branch).emplace<TestImplA, TestAPI>("c");
 
-    auto a = nodes.configure(fixture.root).require<TestAPI>("a");
-    auto b = nodes.configure(fixture.root).require<TestAPI>("b");
-    auto c = nodes.configure(branch).require<TestAPI>("c");
+    auto a = fixture.build(fixture.root).require<TestAPI>("a");
+    auto b = fixture.build(fixture.root).require<TestAPI>("b");
+    auto c = fixture.build(branch).require<TestAPI>("c");
 
     auto result = nodes.query.collect(nodes.ops.root(fixture.root), typeKey<TestAPI>());
 
@@ -404,95 +369,36 @@ TEST(Node_GlobalCollectIgnoresInstanceName, RuntimeFixture,
 "Глобальный поиск должен находить все экземпляры компонента независимо от имени реализации.")
  {
     auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<TestComponent>(fixture.run_ctx.blueprints);
 
-    fixture.build(fixture.root).add<TestComponent>("one");
-    fixture.build(fixture.root).add<TestComponent>("two");
-    fixture.build(fixture.root).add<TestComponent>("three");
+    fixture.build(fixture.root).emplace<TestComponent>("one");
+    fixture.build(fixture.root).emplace<TestComponent>("two");
+    fixture.build(fixture.root).emplace<TestComponent>("three");
 
     const NodeId branch = nodes.factory.folder(fixture.root, "branch");
-    fixture.build(branch).add<TestComponent>("four");
-    fixture.build(branch).add<TestComponent>("five");
+    fixture.build(branch).emplace<TestComponent>("four");
+    fixture.build(branch).emplace<TestComponent>("five");
 
     auto Node = nodes.query.collect(nodes.ops.root(fixture.root), typeKey<TestComponent>());
 
     REQUIRE(Node.size() == 5);
 }
 
-// TEST(Node_RemoveDoesNotAffectParent, RuntimeFixture,
-//     "Удаление компонента из дочерней ветки не должно удалять компонент родителя.") {
-
-//     BlueprintRegister::add<TestComponent>(fixture.run_ctx.blueprints);
-
-//     fixture.build(fixture.root).add<TestComponent>("shared");
-
-//     const NodeId branch = nodes.factory.folder(fixture.root, "branch");
-//     fixture.build(branch).add<TestComponent>("shared");
-
-//     nodes.ops.destroyBranch(nodes.query.find(branch, typeKey<TestComponent>(), "shared"));
-//     REQUIRE(nodes.query.collect(branch, typeKey<TestComponent>()).empty());
-//     REQUIRE(nodes.configure(fixture.root).find<TestComponent>("shared").exists());
-// }
-
 TEST(Node_RemoveShadowDoesNotRevealWrongComponent, RuntimeFixture, 
 "После удаления локального компонента поиск должен корректно продолжить поиск у родителя. \
 Удаление индекса дочернего компонента не должно повреждать или скрывать родительский объект.")
 {
     auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<TestComponent>(fixture.run_ctx.blueprints);
 
-    fixture.build(fixture.root).add<TestComponent>("shared");
+    fixture.build(fixture.root).emplace<TestComponent>("shared");
 
     const NodeId branch = nodes.factory.folder(fixture.root, "branch");
-    fixture.build(branch).add<TestComponent>("shared");
+    fixture.build(branch).emplace<TestComponent>("shared");
 
-    REQUIRE(nodes.configure(branch).find<TestComponent>("shared").exists());
+    REQUIRE(fixture.build(branch).find<TestComponent>("shared").exists());
 
     nodes.ops.destroyBranch(nodes.query.find(branch, typeKey<TestComponent>(), "shared"));
 
-    REQUIRE(nodes.configure(branch).find<TestComponent>("shared").exists());
-}
-
-TEST(Node_ConfigureDeepTree, RuntimeFixture, 
-"configureBranch должен вызвать configure для каждого компонента во всей ветке.\
-Вызов должен корректно проходить через произвольную глубину дерева.") 
-{
-    auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<TestComponent>(fixture.run_ctx.blueprints);
-
-    fixture.build(fixture.root).add<TestComponent>("root");
-
-    const NodeId branch = nodes.factory.folder(fixture.root, "branch");
-    fixture.build(branch).add<TestComponent>("branch");
-
-    const NodeId child = nodes.factory.folder(fixture.root, "Child");
-    fixture.build(child).add<TestComponent>("child");
-
-    nodes.ops.configureBranch(fixture.root);
-
-    REQUIRE(nodes.configure(fixture.root).require<TestComponent>("root")->configured);
-    REQUIRE(nodes.configure(branch).require<TestComponent>("branch")->configured);
-    REQUIRE(nodes.configure(child).require<TestComponent>("child")->configured);
-}
-
-TEST(Node_ConfigureDoesNotConfigureTwice, RuntimeFixture, 
-"Повторный вызов configureBranch не должен приводить к неконтролируемому состоянию компонента. \
-Компонент должен сохранять корректное сконфигурированное состояние.")
-{
-    auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<TestComponent>(fixture.run_ctx.blueprints);
-
-    fixture.build(fixture.root).add<TestComponent>();
-
-    auto component = nodes.configure(fixture.root).require<TestComponent>();
-
-    nodes.ops.configureBranch(fixture.root);
-
-    REQUIRE(component->configured);
-
-    nodes.ops.configureBranch(fixture.root);
-
-    REQUIRE(component->configured);
+    REQUIRE(fixture.build(branch).find<TestComponent>("shared").exists());
 }
 
 }

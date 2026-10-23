@@ -9,13 +9,9 @@
 #include <type_traits>
 #include <utility>
 
-#include <Lattice/Kernel/Consts.hpp>
 #include <Lattice/Tools/Exception.hpp>
 #include <Lattice/Tools/TypeName.hpp>
-#include <Lattice/Kernel/NodeViews.hpp>
 
-
-class NodeBuild;
 
 namespace Lattice {
 
@@ -108,17 +104,9 @@ private:
  * Implementations own storage and typed mutation APIs. The common contract
  * exposes schema, non-owning column views and row growth.
  */
-class Table : public Component {
+class Table {
 public:
     Table() = default;
-    explicit Table(::NodeBuild branch) {
-        branch.action("view", [this](ActionContext& context) {
-            context.present(*this);
-        });
-        branch.action("addRow", [this](ActionContext& context) {
-            context.emit(Value{static_cast<int64_t>(addRow())});
-        });
-    }
     virtual ~Table() = default;
 
     virtual size_t rows() const noexcept = 0;

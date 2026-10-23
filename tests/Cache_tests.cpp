@@ -1,6 +1,6 @@
 #include <cmath>
 
-#include <Lattice/Tools/BmRunner/Metrics/Cache.hpp>
+#include <BmRunner/Metrics/Cache.hpp>
 #include <Lattice/Tools/Tests.hpp>
 
 namespace Lattice {

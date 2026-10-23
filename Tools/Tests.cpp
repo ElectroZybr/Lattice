@@ -1,7 +1,7 @@
 #include <Lattice/Tools/Tests.hpp>
-#include <Lattice/Tools/Logger.hpp>
-#include "Lattice/Tools/LogMode.hpp"
-#include "Lattice/Tools/LogScope.hpp"
+#include <Logger/Logger.hpp>
+#include "Logger/LogMode.hpp"
+#include "Logger/LogScope.hpp"
 
 
 namespace Lattice {

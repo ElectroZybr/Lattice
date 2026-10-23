@@ -1,4 +1,4 @@
-#include <Lattice/Tools/BmRunner/Metrics/PerfEvent.hpp>
+#include <BmRunner/Metrics/PerfEvent.hpp>
 #include <Lattice/Tools/Tests.hpp>
 
 namespace Lattice {

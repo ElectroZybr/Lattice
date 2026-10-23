@@ -2,8 +2,12 @@
 
 #include <cassert>
 #include <cstddef>
+#include <functional>
+#include <concepts>
+#include <Lattice/Kernel/Exports.hpp>
 #include <string_view>
 #include <vector>
+#include <type_traits>
 #include <utility>
 #include <Lattice/Tools/Exception.hpp>
 #include <Lattice/Tools/TypeName.hpp>
@@ -22,7 +26,12 @@ struct Ref {
     T* ptr = nullptr;
 
     Ref() = default;
-    Ref(T* object) : ptr(object) {}
+    Ref(T* object, NodeSystem* runtime = nullptr, NodeId node = InvalidNodeId, uint64_t generation = 0)
+        : ptr(object), runtime_(runtime), node_(node), generation_(generation) {}
+
+    NodeId id() const noexcept { return node_; }
+    NodeSystem* runtime() const noexcept { return runtime_; }
+    uint64_t generation() const noexcept { return generation_; }
 
     T* get() const noexcept { return ptr; }
     T* operator->() const noexcept { return ptr; }
@@ -30,148 +39,130 @@ struct Ref {
 
     bool exists() const noexcept { return ptr != nullptr; }
     explicit operator bool() const noexcept { return ptr != nullptr; }
+
+private:
+    NodeSystem* runtime_ = nullptr;
+    NodeId node_ = InvalidNodeId;
+    uint64_t generation_ = 0;
 };
 
-
-template<typename T>
-class Slot {
-    NodeFactory* factory_;
-    Blueprints* blueprints_;
-    NodeQuery* query_;
-    NodeId id_ = InvalidNodeId;
-
+// Build-only object capability. Runtime code receives ref(), never this builder.
+template<class T>
+class ObjectBuild : public Ref<T> {
 public:
-    Slot() = default;
-    Slot(NodeFactory& factory, NodeQuery& query, Blueprints& blueprints, NodeId id)
-        : factory_(&factory), query_(&query), blueprints_(&blueprints), id_(id) {}
+    explicit ObjectBuild(Ref<T> ref) : Ref<T>(ref) {}
+    ObjectBuild(const ObjectBuild&) = delete;
+    ObjectBuild& operator=(const ObjectBuild&) = delete;
+    ObjectBuild(ObjectBuild&& other) noexcept
+        : Ref<T>(std::exchange(static_cast<Ref<T>&>(other), Ref<T>{})) {}
+    ObjectBuild& operator=(ObjectBuild&&) = delete;
 
-    bool valid() const noexcept {
-        return id_ != InvalidNodeId;
-    }
-
-    T* get() const {
-        // debug assert
-        assert(id_ != InvalidNodeId && "Slot is not initialized"); 
-        return static_cast<T*>(query_->resolve(id_, typeKey<T>()));
-    }
-
-    T* operator->() const { return get(); }
-    T& operator*() const { return *get(); }
-
-    NodeId id() const noexcept { return id_; }
-
-    bool exists() const { return valid() && get() != nullptr; }
-    explicit operator bool() const { return exists(); }
-
-    void choice(BlueprintId impl) {
-        assert(id_ != InvalidNodeId && "Slot is not initialized");
-        factory_->choice(id_, impl);
-    }
-
-    template<typename Impl>
-    void choice() {
-        assert(id_ != InvalidNodeId && "Slot is not initialized");
-        factory_->choice(id_, blueprints_->id<Impl>());
-    }
+    Ref<T> ref() const;
+    template<class Value, class Owner> ExportId param(std::string_view name, Value Owner::* member);
+    /// Export a value that lives inside this object (nested field, container element).
+    template<class Value> ExportId param(std::string_view name, Value& value);
+    // Methods may take ActionContext& as their first parameter.
+    template<class Owner, class Result, class... Args>
+    ExportId action(std::string_view name, Result (Owner::*member)(Args...));
+    template<class Owner, class Result, class... Args>
+    ExportId action(std::string_view name, Result (Owner::*member)(Args...) const);
+    /// Action implemented in composition: callback(T&, [ActionContext&,] Args...).
+    template<class... Args, class F>
+        requires (!std::is_member_function_pointer_v<std::decay_t<F>>)
+    ExportId action(std::string_view name, F&& callback);
+    template<class Owner, class Result, class... Args>
+    ExportId globalAction(std::string_view name, Result (Owner::*member)(Args...));
+    template<class Owner, class Result, class... Args>
+    ExportId globalAction(std::string_view name, Result (Owner::*member)(Args...) const);
+    template<class F> void onRetire(F&& callback);
+    template<class F> void readyToDestroy(F&& callback);
+    /// Run this object as the branch service: run(T&[, idle]) until stop(T&).
+    template<class Run, class Stop> void service(Run run, Stop stop);
 };
 
-
+// Optional and collection arguments are snapshots of existing objects.
 template<typename T>
-class Focus {
-    NodeContext* context_ = nullptr;
-    NodeQuery* query_ = nullptr;
-    ContextScopeId scope_ = InvalidContextScopeId;
-    RoleId role_ = InvalidRoleId;
-
-public:
-    Focus() = default;
-    Focus(NodeContext& context, NodeQuery& query, ContextScopeId scope, RoleId role)
-        : context_(&context), query_(&query), scope_(scope), role_(role) {}
-
-    bool valid() const noexcept {
-        return role_ != InvalidRoleId;
-    }
-
-    NodeId id() const {
-        assert(valid() && "Focus is not initialized");
-
-        return scope_ == InvalidContextScopeId
-            ? context_->resolve(role_)
-            : context_->resolve(scope_, role_);
-    }
-
-    T* get() const {
-        assert(valid() && "Focus is not initialized");
-
-        const NodeId target = id();
-        return target == InvalidNodeId
-            ? nullptr
-            : static_cast<T*>(query_->resolve(target, typeKey<T>()));
-    }
-
-    T* operator->() const { return get(); }
-    T& operator*() const { return *get(); }
-
-    explicit operator bool() const {
-        return valid() && get() != nullptr;
-    }
-
-    void choice(NodeId target) {
-        assert(valid() && "Focus is not initialized");
-
-        if (scope_ == InvalidContextScopeId)
-            throw Exception<Focus>("Cannot modify global focus without a scope");
-
-        context_->set(scope_, role_, target);
-    }
-
-    void reset() {
-        assert(valid() && "Focus is not initialized");
-
-        if (scope_ == InvalidContextScopeId)
-            throw Exception<Focus>("Cannot reset global focus without a scope");
-
-        context_->reset(scope_, role_);
-    }
-};
-
-
-template<typename T>
-struct Mount final : public Ref<T> {
-    Mount() = default;
+struct OptionalRef : Ref<T> {
     using Ref<T>::Ref;
 };
 
-
 template<typename T>
-struct Children {
-    std::vector<T*> items;
-
-    Children() = default;
-    explicit Children(std::vector<T*> values) : items(std::move(values)) {}
-    Children(NodeSystem& nodes, NodeId owner, std::vector<T*> values)
-        : items(std::move(values)), nodes_(&nodes), owner_(owner) {}
-
-    NodeId add(std::string_view name = DefaultInstanceName);
-    void del(NodeId child);
-
-    std::size_t size() const noexcept { return items.size(); }
-
-    bool empty() const noexcept { return items.empty(); }
-
-    bool exists() const noexcept { return !items.empty(); }
-
-    T* operator[](std::size_t i) const noexcept { return items[i]; }
-
-    auto begin() const noexcept { return items.begin(); }
-
-    auto end() const noexcept { return items.end(); }
-
-    explicit operator bool() const noexcept { return exists(); }
+class Selection {
+public:
+    Selection() = default;
+    explicit Selection(std::vector<Ref<T>> values) : items_(std::move(values)) {}
+    std::size_t size() const noexcept { return items_.size(); }
+    bool empty() const noexcept { return items_.empty(); }
+    const Ref<T>& operator[](std::size_t index) const { return items_[index]; }
+    auto begin() const noexcept { return items_.begin(); }
+    auto end() const noexcept { return items_.end(); }
 
 private:
-    NodeSystem* nodes_ = nullptr;
+    std::vector<Ref<T>> items_;
+};
+
+
+/**
+ * Selects an implementation, unlike Focus which selects an existing instance.
+ * A composed implementation returns its API object from its owned subtree.
+ * choice() returns false while old contents retire; the caller retries explicitly.
+ */
+template<typename T>
+class Slot {
+    NodeSystem* runtime_ = nullptr;
+    NodeId id_ = InvalidNodeId;
+    uint64_t generation_ = 0;
+public:
+    Slot() = default;
+    Slot(NodeFactory& factory, NodeQuery&, Blueprints&, NodeId id);
+    bool valid() const noexcept;
+    T* get() const;
+    T* operator->() const { return get(); }
+    T& operator*() const { return *get(); }
+    NodeId id() const noexcept { return id_; }
+    bool exists() const { return get() != nullptr; }
+    explicit operator bool() const { return exists(); }
+    /// Snapshot of the selected object, suitable for constructor injection.
+    Ref<T> ref() const;
+    bool choice(BlueprintId implementation);
+    /// Register a named composition inferred from an ordinary function's return handle.
+    /// Reusing a name with another function/API is an error.
+    template<class Result> bool choice(std::string_view name, Result (*compose)(::NodeBuild&));
+};
+
+
+/**
+ * @brief Runtime handle to a contextual choice in one branch scope.
+ *
+ * Copies observe later branch focus/reset operations. ref() takes a snapshot for
+ * constructor injection; changing focus never rebinds an existing C++ reference.
+ * The handle neither owns the target nor registers a dependency by itself.
+ */
+template<typename T>
+class Focus {
+    NodeSystem* runtime_ = nullptr;
+    ContextScopeId scope_ = InvalidContextScopeId;
+    RoleId role_ = InvalidRoleId;
     NodeId owner_ = InvalidNodeId;
+    uint64_t ownerGeneration_ = 0;
+
+public:
+    Focus() = default;
+    Focus(NodeSystem& runtime, ContextScopeId scope, RoleId role);
+
+    bool valid() const noexcept;
+    NodeId id() const;
+    T* get() const;
+    T* operator->() const { return get(); }
+    T& operator*() const { return *get(); }
+    explicit operator bool() const { return get() != nullptr; }
+
+    /// Resolve the current selection into a non-owning, generation-checked snapshot.
+    /// Throws for a missing/ambiguous role or an expired scope.
+    Ref<T> ref() const;
+
+    /// Remove this scope's explicit target and restore normal inherited resolution.
+    void reset();
 };
 
 }
@@ -182,11 +173,5 @@ using Lattice::Ref;
 /// ссылка на слот апи в котором может находится его реализация
 using Lattice::Slot;
 
-/// хранит ссылку на текущий объект, позволяет переключать фокус; обновляется присваиванием в configure
+/// контекстный выбор существующего объекта в scope ветки
 using Lattice::Focus;
-
-/// ссылка на внешний примонтированный компонент
-using Lattice::Mount;
-
-/// Список непосредственных детей типа; обновляется присваиванием в configure
-using Lattice::Children;

@@ -1,0 +1,5 @@
+target("TestNoCompose")
+    set_kind("shared")
+    set_targetdir(".")
+    add_files("package.cpp")
+    add_deps("Lattice")

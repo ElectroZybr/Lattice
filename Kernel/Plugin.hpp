@@ -11,23 +11,10 @@
 
 #include <Lattice/Kernel/Blueprints.hpp>
 #include <Lattice/Kernel/DynamicLibrary.hpp>
+#include <Lattice/Kernel/Package.hpp>
 
 namespace Lattice {
     
-struct Version {
-    uint8_t major = 0;
-    uint8_t minor = 0;
-    uint8_t patch = 0;
-
-    auto operator<=>(const Version&) const = default;
-
-    std::string str() const {
-        return std::format("{}.{}.{}", major, minor, patch);
-    }
-};
-
-inline constexpr Version kernelApi{1, 0, 0};
-
 struct VersionRange {
     std::optional<Version> min;
     std::optional<Version> max;
@@ -109,7 +96,7 @@ enum class LoadStatus {
     Failed
 };
 
-using PluginRegisterFn = bool(*)(Blueprints&);
+using PluginComposeFn = void(*)(::NodeBuild);
 
 struct Plugin {
     std::filesystem::path path;

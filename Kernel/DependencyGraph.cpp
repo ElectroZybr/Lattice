@@ -11,6 +11,7 @@ void DependencyGraph::ensure(NodeId node) {
 
     const size_t size = static_cast<size_t>(node) + 1;
     if (dependencies_.size() < size) {
+        retained_.resize(size);
         dependencies_.resize(size);
         dependents_.resize(size);
     }
@@ -31,6 +32,28 @@ void DependencyGraph::add(NodeId dependent, NodeId dependency) {
     dependents_[dependency].push_back(dependent);
 }
 
+void DependencyGraph::retain(NodeId dependent, NodeId dependency) {
+    add(dependent, dependency);
+    if (dependent != dependency && !retained(dependent, dependency))
+        retained_[dependent].push_back(dependency);
+}
+
+bool DependencyGraph::retained(NodeId dependent, NodeId dependency) const {
+    return dependent < retained_.size() &&
+        std::ranges::find(retained_[dependent], dependency) != retained_[dependent].end();
+}
+
+void DependencyGraph::clearResolvedDependencies(NodeId node) {
+    if (node >= dependencies_.size())
+        return;
+    std::erase_if(dependencies_[node], [&](NodeId dependency) {
+        if (retained(node, dependency))
+            return false;
+        std::erase(dependents_[dependency], node);
+        return true;
+    });
+}
+
 void DependencyGraph::clearDependencies(NodeId node) {
     if (node >= dependencies_.size())
         return;
@@ -39,6 +62,7 @@ void DependencyGraph::clearDependencies(NodeId node) {
         std::erase(dependents_[dependency], node);
 
     dependencies_[node].clear();
+    retained_[node].clear();
 }
 
 void DependencyGraph::removeNode(NodeId node) {
@@ -47,13 +71,16 @@ void DependencyGraph::removeNode(NodeId node) {
 
     clearDependencies(node);
 
-    for (NodeId dependent : dependents_[node])
+    for (NodeId dependent : dependents_[node]) {
         std::erase(dependencies_[dependent], node);
+        std::erase(retained_[dependent], node);
+    }
 
     dependents_[node].clear();
 }
 
 void DependencyGraph::clear() {
+    retained_.clear();
     dependencies_.clear();
     dependents_.clear();
 }

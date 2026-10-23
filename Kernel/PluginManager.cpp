@@ -1,11 +1,12 @@
 #include <Lattice/Kernel/PluginManager.hpp>
 #include <Lattice/Kernel/Requirements.hpp>
-#include <Lattice/Tools/Logger.hpp>
+#include <Logger/Logger.hpp>
 #include <Lattice/Kernel/Plugin.hpp>
-#include <toml++/toml.h>
-#include "Lattice/Tools/LogScope.hpp"
+#include "Logger/LogScope.hpp"
 
+#include <algorithm>
 #include <cstddef>
+#include <format>
 
 namespace Lattice {
 
@@ -16,69 +17,76 @@ namespace Lattice {
         return loadCandidates();
     }
 
-    void PluginManager::scanDirectory(std::filesystem::path path) {
-        for (const std::filesystem::directory_entry& entry : std::filesystem::recursive_directory_iterator(path)) {
-            if (!entry.is_regular_file())
-                continue;
-
-            if (entry.path().filename() != "Plugin.toml")
-                continue;
-            
-            try {
-                std::filesystem::path pluginDir = entry.path().parent_path();
-                Plugin candidate = {pluginDir, parseManifest(entry.path())};
-
-                auto [it, inserted] = candidates.emplace(candidate.manifest.id, candidate);
-
-                if (!inserted) {
-                    Logger::error(tag, "Duplicate plugin id '{}': {}", candidate.manifest.id, entry.path().string());
-                }
-
-                Logger::info(tag, "Found plugin manifest: {} v{}", candidate.manifest.id, candidate.manifest.version.str());
-            }
-            catch (const std::exception& e) {
-                Logger::error(tag, "Failed to parse {}: {}", entry.path().string(), e.what());
-            }
-        }
+    namespace {
+    // Package libraries: lib<Name>.so, not lib<Name>.tests.so / .bench.so.
+    bool packageLibrary(const std::filesystem::path& file) {
+        return file.extension() == DynamicLibrary::extension() && !file.stem().has_extension();
     }
 
-    PluginManifest PluginManager::parseManifest(std::filesystem::path path) {
-        PluginManifest info;
-        auto table = toml::parse_file(path.string());
-
-        info.id = table["id"].value_or("");
-        info.name = table["name"].value_or("");
-        if (auto version = table["version"].value<std::string>()) {
-            info.version = VersionRange::parseVersion(*version);
+    PluginManifest manifestOf(const Package& package) {
+        PluginManifest manifest{
+            .id = std::string(package.id),
+            .name = std::string(package.name.empty() ? package.id : package.name),
+            .version = package.version,
+            .kernelApi = package.kernelApi
+        };
+        for (const auto& dependency : package.dependencyList()) {
+            VersionRange range;
+            range.min = dependency.min;
+            range.max = dependency.before;
+            range.requirement = dependency.before
+                ? std::format(">={} <{}", dependency.min.str(), dependency.before->str())
+                : std::format(">={}", dependency.min.str());
+            manifest.dependencies.push_back({std::string(dependency.id), std::move(range)});
         }
-        info.kernelApi = kernelApi;
-        if (auto core = table["core"].as_table()) {
-            if (auto apiNode = (*core)["api"]) {
-                if (auto s = apiNode.value<std::string>())
-                    info.kernelApi = VersionRange::parseVersion(*s);
-                else if (auto n = apiNode.value<int64_t>())
-                    info.kernelApi = Version{static_cast<uint8_t>(*n), 0, 0};
+        return manifest;
+    }
+    }
+
+    // A directory is a package itself or contains packages one level below.
+    void PluginManager::scanDirectory(std::filesystem::path path) {
+        if (!std::filesystem::is_directory(path)) {
+            Logger::warning(tag, "Package directory '{}' does not exist", path.string());
+            return;
+        }
+
+        std::vector<std::filesystem::path> files;
+        const auto collect = [&](const std::filesystem::path& directory) {
+            for (const auto& entry : std::filesystem::directory_iterator(directory))
+                if (entry.is_regular_file() && packageLibrary(entry.path()))
+                    files.push_back(entry.path());
+        };
+        collect(path);
+        for (const auto& entry : std::filesystem::directory_iterator(path))
+            if (entry.is_directory())
+                collect(entry.path());
+        std::ranges::sort(files);
+
+        for (const auto& file : files) {
+            DynamicLibrary* library = dlLoader.loadLibrary(file);
+            if (!library)
+                continue;
+
+            const auto* package = library->symbol<const Package*>(packageSymbol);
+            if (!package) {
+                Logger::warning(tag, "'{}' has no package metadata ({}); skipped", file.string(), packageSymbol);
+                continue;
             }
-        }
-
-        if (auto deps = table["dependencies"].as_array()) {
-            for (auto&& node : *deps) {
-                auto* dep = node.as_table();
-                if (!dep)
-                    continue;
-
-                PluginDependency dependency;
-
-                dependency.id = dep->at("id").value_or("");
-
-                if (auto version = dep->at("version").value<std::string>()) {
-                    dependency.requirement = VersionRange::parse(*version);
-                }
-
-                info.dependencies.push_back(std::move(dependency));
+            if (package->id.empty()) {
+                Logger::error(tag, "'{}' declares a package without id", file.string());
+                continue;
             }
+
+            Plugin candidate{file.parent_path(), manifestOf(*package)};
+            candidate.library = library;
+            auto [it, inserted] = candidates.emplace(candidate.manifest.id, std::move(candidate));
+            if (!inserted) {
+                Logger::error(tag, "Duplicate package id '{}': {}", package->id, file.string());
+                continue;
+            }
+
+            Logger::info(tag, "Found package: {} v{}", package->id, package->version.str());
         }
-        return info;
     }
 
     void PluginManager::checkCandidates() {
@@ -206,39 +214,18 @@ namespace Lattice {
     }
 
     bool PluginManager::loadPlugin(Plugin* candidate) {
-        std::filesystem::path path;
-
-        
-        for (const auto& entry : std::filesystem::directory_iterator(candidate->path)) {
-            if (entry.is_regular_file() && entry.path().extension() == DynamicLibrary::extension() && !entry.path().stem().has_extension()) {
-                path = entry.path();
-                break;
-            }
-        }
-
-        if (dlLoader.find(path.stem().string())) {
-            Logger::error(tag, "Dynamic library '{}' already loaded", candidate->path.stem().string());
-            return false;
-        }
-
-        if (path.empty()) {
-            Logger::error(tag, "No dynamic library found for plugin '{}': {}",
-                candidate->manifest.id, candidate->path.string());
+        // The library was opened while reading its metadata.
+        const auto path = candidate->library ? candidate->library->path : candidate->path;
+        if (!candidate->library) {
             candidate->status = LoadStatus::Failed;
             return false;
         }
 
         const size_t depsBefore = compileDepSink().size();
 
-        candidate->library = dlLoader.loadLibrary(path);
-        if (!candidate->library) {
-            candidate->status = LoadStatus::Failed;
-            return false;
-        }
-
-        auto regFn = candidate->library->symbol<PluginRegisterFn>("plugin_register");
-        if (!regFn) {
-            Logger::error(tag, "plugin_register symbol not found in '{}'", path.string());
+        auto compose = candidate->library->symbol<PluginComposeFn>("compose");
+        if (!compose) {
+            Logger::error(tag, "compose symbol not found in '{}'", path.string());
             candidate->status = LoadStatus::Failed;
             return false;
         }
@@ -247,8 +234,7 @@ namespace Lattice {
         auto snapshot = blueprints;
 
         try {
-            if (!regFn(blueprints))
-                throw Exception<PluginManager>("plugin_register failed for '{}'", candidate->manifest.id);
+            blueprints.addComposition(candidate->manifest.id, compose);
         } catch (const std::exception& error) {
             blueprints = std::move(snapshot);
             Logger::error(tag, "Registration failed for '{}': {}", candidate->manifest.id, error.what());

@@ -48,27 +48,12 @@ TEST(Table_BasicTableAcceptsCustomTypes, RuntimeFixture,
     REQUIRE(column.values<Particle>()[0] == (Particle{8, -2.0}));
 }
 
-TEST(Table_DefaultImplementationBuildsAsNode, RuntimeFixture,
-    "Стандартная таблица должна строиться через обычный Table blueprint.") {
-    const BlueprintId tableBlueprint = fixture.run_ctx.blueprints.id<Table>();
-    const NodeId node = fixture.run_ctx.nodes.builder.add(
-        fixture.root,
-        tableBlueprint,
-        "results"
-    );
-
-    auto configure = fixture.run_ctx.nodes.configure(fixture.root);
-    REQUIRE(configure.resolve<Table>(node) != nullptr);
-    REQUIRE(configure.resolve<BasicTable>(node) != nullptr);
-}
-
-TEST(Table_BaseExportsViewAction, RuntimeFixture,
-    "Базовый Table должен добавлять view каждой реализации.") {
-    const NodeId node = fixture.run_ctx.nodes.builder.add(
-        fixture.root,
-        fixture.run_ctx.blueprints.id<Table>(),
-        "results"
-    );
+TEST(Table_CompositionExportsViewAction, RuntimeFixture,
+    "exportTable должен добавлять view объекту таблицы в композиции.") {
+    auto root = fixture.build(fixture.root);
+    auto table = root.emplace<BasicTable, Table>("results");
+    exportTable(table);
+    const NodeId node = table.id();
 
     const ExportId view = fixture.run_ctx.nodes.exports.find(node, "view");
     REQUIRE(view != InvalidExportId);
@@ -79,20 +64,16 @@ TEST(Table_BaseExportsViewAction, RuntimeFixture,
     REQUIRE(context.output().size() == 1);
     const auto& output = std::get<ActionView>(context.output().front());
     REQUIRE(output.is<Table>());
-
-    auto configure = fixture.run_ctx.nodes.configure(fixture.root);
-    REQUIRE(&output.as<Table>() == configure.resolve<Table>(node));
+    REQUIRE(&output.as<Table>() == static_cast<Table*>(table.get()));
 }
 
-TEST(Table_BaseAddsRows, RuntimeFixture,
-    "Table должен добавлять строки через общий API и export.") {
-    const NodeId node = fixture.run_ctx.nodes.builder.add(
-        fixture.root,
-        fixture.run_ctx.blueprints.id<Table>(),
-        "results"
-    );
-    auto configure = fixture.run_ctx.nodes.configure(fixture.root);
-    Table* table = configure.resolve<Table>(node);
+TEST(Table_CompositionAddsRows, RuntimeFixture,
+    "Table должен добавлять строки через общий API и export из композиции.") {
+    auto root = fixture.build(fixture.root);
+    auto built = root.emplace<BasicTable, Table>("results");
+    exportTable(built);
+    const NodeId node = built.id();
+    Table* table = built.get();
 
     REQUIRE(table->addRows(2) == 0);
     REQUIRE(table->addRow() == 2);
@@ -105,6 +86,14 @@ TEST(Table_BaseAddsRows, RuntimeFixture,
     fixture.run_ctx.nodes.exports.invoke(addRow, context);
     REQUIRE(table->rows() == 4);
     REQUIRE(std::get<Value>(context.output().front()).get<int64_t>() == 3);
+}
+
+TEST(Table_PlainTableHasNoExports, RuntimeFixture,
+    "Table без exportTable не должен сам регистрировать действия.") {
+    auto root = fixture.build(fixture.root);
+    auto table = root.emplace<BasicTable, Table>("plain");
+    REQUIRE(fixture.run_ctx.nodes.exports.find(table.id(), "view") == InvalidExportId);
+    REQUIRE(fixture.run_ctx.nodes.exports.find(table.id(), "addRow") == InvalidExportId);
 }
 
 TEST(Table_BaseAddsTypedRows, RuntimeFixture,

@@ -17,37 +17,17 @@
 #include <Lattice/Tools/Exception.hpp>
 #include <Lattice/Kernel/DLLoader.hpp>
 #include <Lattice/Kernel/Context.hpp>
-#include <Lattice/Kernel/BlueprintRegister.hpp>
-#include <Lattice/Kernel/BasicTable.hpp>
-#include <Lattice/Kernel/Model.hpp>
-#include <Lattice/Tools/SysInfo/Output.hpp>
-#include "Lattice/Tools/LogScope.hpp"
-#include "Lattice/Tools/LogMode.hpp"
-#include "Lattice/Tools/Logger.hpp"
+#include <Lattice/Kernel/NodeViews.hpp>
+#include <SysInfo/Output.hpp>
+#include "Logger/LogScope.hpp"
+#include "Logger/LogMode.hpp"
+#include "Logger/Logger.hpp"
 #include "Lattice/Tools/Tests.hpp"
 
 
 namespace Lattice {
 
 class Runtime {
-    class Root {
-    public:
-        struct Desc {
-            std::function<void()> dumpBlueprints;
-            std::function<void()> requestExit;
-            std::function<void(ActionContext&, std::string, std::optional<std::string>)> addChild;
-            std::function<void(ActionContext&, std::string, std::optional<std::string>)> delChild;
-        };
-
-        Root(::NodeBuild node, const Desc& desc) {
-            node.globalAction("dumpBlueprints", desc.dumpBlueprints);
-            const ExportId quit = node.globalAction("quit", desc.requestExit);
-            node.globalAlias("exit", quit);
-            node.globalAction<std::string, std::optional<std::string>>("add", desc.addChild);
-            node.globalAction<std::string, std::optional<std::string>>("del", desc.delChild);
-        }
-    };
-
     struct StartupBranch {
         NodeId node = InvalidNodeId;
         std::string type;
@@ -66,26 +46,22 @@ class Runtime {
     
 public:
     Runtime() : pluginManager(run_ctx.blueprints, dlLoader) {
-        // регистрация интерфейсов ядра
-        BlueprintRegister::add<Component>(run_ctx.blueprints);
-        BlueprintRegister::add<Table, Component>(run_ctx.blueprints);
-        BlueprintRegister::add<BasicTable, Table>(run_ctx.blueprints);
-        BlueprintRegister::add<ServiceAPI>(run_ctx.blueprints);
-        BlueprintRegister::add<SubsystemAPI>(run_ctx.blueprints);
-        BlueprintRegister::add<Model, ServiceAPI>(run_ctx.blueprints);
-        const BlueprintId rootBlueprint = BlueprintRegister::add<Root>(run_ctx.blueprints, "Root");
+        // ядро ищет сервисы веток по этому API
+        detail::ensureObject<ServiceAPI>(run_ctx.blueprints);
+        root = run_ctx.nodes.factory.folder(InvalidNodeId, "Root");
 
-        const Root::Desc rootDesc{
-            .dumpBlueprints = [this] { run_ctx.blueprints.dumpTree(); },
-            .requestExit = [this] { requestExit(); },
-            .addChild = [this](ActionContext& context, std::string blueprint, std::optional<std::string> name) {
+        ::NodeBuild node{root, run_ctx.nodes};
+        node.globalAction("dumpBlueprints", [this] { run_ctx.blueprints.dumpTree(); });
+        const ExportId quit = node.globalAction("quit", [this] { requestExit(); });
+        node.globalAlias("exit", quit);
+        node.globalAction<std::string, std::optional<std::string>>("add",
+            [this](ActionContext& context, std::string blueprint, std::optional<std::string> name) {
                 addChild(context.node(), blueprint, name.value_or(std::string{}));
-            },
-            .delChild = [this](ActionContext& context, std::string blueprint, std::optional<std::string> name) {
+            });
+        node.globalAction<std::string, std::optional<std::string>>("del",
+            [this](ActionContext& context, std::string blueprint, std::optional<std::string> name) {
                 delChild(context.node(), blueprint, name);
-            }
-        };
-        root = run_ctx.nodes.builder.add(InvalidNodeId, rootBlueprint, DefaultInstanceName, &rootDesc);
+            });
     }
 
     int run(int argc, char** argv) {
@@ -125,13 +101,13 @@ public:
             { // инициализация ядра
                 LogScope scope(tag, "<b>System loading</>");
                 // загрузка плагинов
-                pluginManager.load("Plugins");
+                pluginManager.load("Packages");
                 scope.finish("<ok>Loaded</>");
             }
             
             if (testMode) { // режим прогона тестов
                 dlLoader.load("Lattice", ".tests");
-                dlLoader.load("Plugins", ".tests");
+                dlLoader.load("Packages", ".tests");
                 return Test::instance().runAll() == 0 ? 0 : 1;
             }
 
@@ -140,7 +116,7 @@ public:
             
             const std::vector<StartupBranch> startupBranches = build(config);
 
-            { // стартовые данные после configure всех веток
+            { // стартовые данные после сборки всех веток
                 LogScope scope(tag, "<b>System boot</>");
                 loadStartup(startupBranches);
                 scope.finish("<ok>Boot finished</>");
@@ -154,8 +130,8 @@ public:
             }
 
             if (host != InvalidNodeId) {
-                auto* service = resolveService(host);
-                if (!service) throw Exception<Runtime>("Host does not implement ServiceAPI");
+                auto* service = branchService(host);
+                if (!service) throw Exception<Runtime>("Host branch declares no service");
                 service->enter(run_ctx.nodes.ops);
                 run_ctx.nodes.ops.maintain();
             } else {
@@ -226,6 +202,24 @@ private:
         return static_cast<ServiceAPI*>(
             run_ctx.nodes.query.resolve(id, run_ctx.blueprints.id<ServiceAPI>())
         );
+    }
+
+    // A startup branch has at most one service: its root object or one declared
+    // with ObjectBuild::service anywhere in the branch. Several are ambiguous.
+    ServiceAPI* branchService(NodeId branch) {
+        const BlueprintId api = run_ctx.blueprints.id<ServiceAPI>();
+        const auto services = run_ctx.nodes.query.collect(branch, api);
+        if (services.empty())
+            return nullptr;
+        if (services.size() > 1) {
+            std::string candidates;
+            for (NodeId id : services)
+                candidates += "\n- " + run_ctx.nodes.ops.stringPath(id);
+            throw Exception<Runtime>(
+                "Startup branch '{}' declares {} services; keep one per branch:{}",
+                run_ctx.nodes.ops.stringPath(branch), services.size(), candidates);
+        }
+        return resolveService(services.front());
     }
 
     NodeId addChild(NodeId parent, std::string_view blueprint, std::string_view name) {
@@ -320,7 +314,7 @@ private:
         if (branch.host)
             return;
 
-        auto* service = resolveService(branch.node);
+        auto* service = branchService(branch.node);
         if (!service)
             return;
 
@@ -334,7 +328,7 @@ private:
         if (host == InvalidNodeId)
             return;
 
-        if (auto* service = resolveService(host))
+        if (auto* service = branchService(host))
             service->stop();
     }
 

@@ -7,34 +7,19 @@
 namespace Lattice {
 namespace {
 
-struct DependencyTarget : Component {};
+struct DependencyTarget {};
 
-struct DependencyConsumer : Component {
-    Ref<DependencyTarget> target;
-
-    void configure(NodeConfigure node) {
-        target = node.require<DependencyTarget>("target");
-    }
+struct DependencyConsumer {
+    explicit DependencyConsumer(DependencyTarget& target) : target(target) {}
+    DependencyTarget& target;
 };
 
-struct IndependentComponent : Component {};
+struct IndependentObject {};
 
-struct OwnedDependencyChild : Component {};
+struct OwnedDependencyChild {};
 
-struct BranchDependencyConsumer : Component {
-    explicit BranchDependencyConsumer(NodeBuild node) {
-        node.add<OwnedDependencyChild>();
-    }
-
-    void configure(NodeConfigure node) {
-        node.require<DependencyTarget>("target");
-    }
-};
-
-struct TransitiveDependencyConsumer : Component {
-    void configure(NodeConfigure node) {
-        node.require<BranchDependencyConsumer>("consumer");
-    }
+struct TransitiveDependencyConsumer {
+    explicit TransitiveDependencyConsumer(DependencyConsumer&) {}
 };
 
 }
@@ -66,25 +51,23 @@ TEST(DependencyGraph_StoresBothDirectionsAndDeduplicates, RuntimeFixture,
     REQUIRE(graph.dependencies(11).empty());
 }
 
-TEST(DependencyGraph_NodeConfigureRegistersResolvedReference, RuntimeFixture,
-    "NodeConfigure::require должен зарегистрировать зависимость владельца Ref от цели.") {
+TEST(DependencyGraph_ConstructorArgumentRegistersDependency, RuntimeFixture,
+    "Handle в аргументе emplace должен зарегистрировать зависимость потребителя от цели.") {
     auto& nodes = fixture.run_ctx.nodes;
-    const BlueprintId targetBlueprint = BlueprintRegister::add<DependencyTarget, Component>(
-        fixture.run_ctx.blueprints
-    );
-    const BlueprintId consumerBlueprint = BlueprintRegister::add<DependencyConsumer, Component>(
-        fixture.run_ctx.blueprints
-    );
+    auto root = fixture.build(fixture.root);
 
-    const NodeId target = nodes.builder.add(fixture.root, targetBlueprint, "target");
-    const NodeId consumer = nodes.builder.add(fixture.root, consumerBlueprint, "consumer");
+    const auto targetObject = root.emplace<DependencyTarget>("target");
+    const NodeId target = targetObject.id();
+    const NodeId consumer = root.emplace<DependencyConsumer>("consumer", targetObject.ref()).id();
 
     REQUIRE(nodes.dependencies.dependencies(consumer).size() == 1);
     REQUIRE(nodes.dependencies.dependencies(consumer).front() == target);
     REQUIRE(nodes.dependencies.dependents(target).size() == 1);
     REQUIRE(nodes.dependencies.dependents(target).front() == consumer);
+    REQUIRE(nodes.dependencies.retained(consumer, target));
 
-    nodes.configure(consumer).require<DependencyTarget>("target");
+    // Queries are snapshots and do not add edges.
+    root.require<DependencyTarget>("target");
 
     REQUIRE(nodes.dependencies.dependencies(consumer).size() == 1);
     REQUIRE(nodes.dependencies.dependents(target).size() == 1);
@@ -93,18 +76,11 @@ TEST(DependencyGraph_NodeConfigureRegistersResolvedReference, RuntimeFixture,
 TEST(DependencyGraph_DestroyRemovesEdgesBeforeNodeIdReuse, RuntimeFixture,
     "Уничтожение узла должно очистить граф до повторного использования его NodeId.") {
     auto& nodes = fixture.run_ctx.nodes;
-    const BlueprintId targetBlueprint = BlueprintRegister::add<DependencyTarget, Component>(
-        fixture.run_ctx.blueprints
-    );
-    const BlueprintId consumerBlueprint = BlueprintRegister::add<DependencyConsumer, Component>(
-        fixture.run_ctx.blueprints
-    );
-    const BlueprintId independentBlueprint = BlueprintRegister::add<IndependentComponent, Component>(
-        fixture.run_ctx.blueprints
-    );
+    auto root = fixture.build(fixture.root);
 
-    const NodeId target = nodes.builder.add(fixture.root, targetBlueprint, "target");
-    const NodeId consumer = nodes.builder.add(fixture.root, consumerBlueprint, "consumer");
+    const auto targetObject = root.emplace<DependencyTarget>("target");
+    const NodeId target = targetObject.id();
+    const NodeId consumer = root.emplace<DependencyConsumer>("consumer", targetObject.ref()).id();
 
     nodes.ops.destroyBranch(consumer);
 
@@ -112,7 +88,7 @@ TEST(DependencyGraph_DestroyRemovesEdgesBeforeNodeIdReuse, RuntimeFixture,
     REQUIRE(nodes.dependencies.dependents(consumer).empty());
     REQUIRE(nodes.dependencies.dependents(target).empty());
 
-    const NodeId replacement = nodes.builder.add(fixture.root, independentBlueprint, "replacement");
+    const NodeId replacement = root.emplace<IndependentObject>("replacement").id();
 
     REQUIRE(replacement == consumer);
     REQUIRE(nodes.dependencies.dependencies(replacement).empty());
@@ -122,25 +98,15 @@ TEST(DependencyGraph_DestroyRemovesEdgesBeforeNodeIdReuse, RuntimeFixture,
 TEST(DependencyGraph_RemovalClosureIncludesOwnedAndTransitiveDependents, RuntimeFixture,
     "Removal closure должен рекурсивно объединять ownership-поддеревья и dependents.") {
     auto& nodes = fixture.run_ctx.nodes;
-    const BlueprintId targetBlueprint = BlueprintRegister::add<DependencyTarget, Component>(
-        fixture.run_ctx.blueprints
-    );
-    BlueprintRegister::add<OwnedDependencyChild, Component>(fixture.run_ctx.blueprints);
-    const BlueprintId consumerBlueprint = BlueprintRegister::add<BranchDependencyConsumer, Component>(
-        fixture.run_ctx.blueprints
-    );
-    const BlueprintId transitiveBlueprint = BlueprintRegister::add<TransitiveDependencyConsumer, Component>(
-        fixture.run_ctx.blueprints
-    );
-    const BlueprintId independentBlueprint = BlueprintRegister::add<IndependentComponent, Component>(
-        fixture.run_ctx.blueprints
-    );
+    auto root = fixture.build(fixture.root);
 
-    const NodeId target = nodes.builder.add(fixture.root, targetBlueprint, "target");
-    const NodeId consumer = nodes.builder.add(fixture.root, consumerBlueprint, "consumer");
-    const NodeId ownedChild = nodes.registry.children(consumer).front();
-    const NodeId transitive = nodes.builder.add(fixture.root, transitiveBlueprint, "transitive");
-    const NodeId independent = nodes.builder.add(fixture.root, independentBlueprint, "independent");
+    const auto targetObject = root.emplace<DependencyTarget>("target");
+    const NodeId target = targetObject.id();
+    const auto consumerObject = root.emplace<DependencyConsumer>("consumer", targetObject.ref());
+    const NodeId consumer = consumerObject.id();
+    const NodeId ownedChild = ::NodeBuild{consumer, nodes}.emplace<OwnedDependencyChild>("").id();
+    const NodeId transitive = root.emplace<TransitiveDependencyConsumer>("transitive", consumerObject.ref()).id();
+    const NodeId independent = root.emplace<IndependentObject>("independent").id();
     nodes.dependencies.add(target, transitive); // замыкает цикл target -> transitive -> consumer -> target
 
     const auto closure = nodes.ops.collectRemovalClosure(target);

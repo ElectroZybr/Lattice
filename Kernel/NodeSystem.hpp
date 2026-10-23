@@ -10,8 +10,6 @@
 #include <Lattice/Kernel/Exports.hpp>
 #include <Lattice/Kernel/Visibility.hpp>
 
-class NodeConfigure;
-
 namespace Lattice {
 
 class LATTICE_API NodeSystem {
@@ -33,8 +31,6 @@ public:
         , query(registry, blueprints, context)
         , ops(*this)
         , builder(*this) {}
-
-    ::NodeConfigure configure(NodeId id);
 };
 
 }

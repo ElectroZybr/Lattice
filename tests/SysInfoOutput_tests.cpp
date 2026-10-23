@@ -1,4 +1,4 @@
-#include <Lattice/Tools/SysInfo/Output.hpp>
+#include <SysInfo/Output.hpp>
 #include <Lattice/Tools/Tests.hpp>
 
 namespace Lattice {

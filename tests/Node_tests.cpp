@@ -6,104 +6,60 @@
 
 namespace Lattice {
 
-class BasicTestComponent {
-public:
-    bool configured = false;
+struct BasicTestObject {
+    int value = 0;
+};
 
-    void configure(NodeConfigure) {
-        configured = true;
+TEST(Node_Emplace, RuntimeFixture) {
+    auto& nodes = fixture.run_ctx.nodes;
+    auto root = fixture.build(fixture.root);
+
+    REQUIRE(!root.find<BasicTestObject>().exists());
+
+    root.emplace<BasicTestObject>("");
+
+    REQUIRE(root.find<BasicTestObject>().exists());
+    REQUIRE(nodes.registry.require(nodes.query.require(fixture.root, typeKey<BasicTestObject>())).name.empty());
+    REQUIRE(root.require<BasicTestObject>().exists());
+}
+
+TEST(Node_EmplaceDuplicateRejected, RuntimeFixture) {
+    auto& nodes = fixture.run_ctx.nodes;
+    auto root = fixture.build(fixture.root);
+
+    root.emplace<BasicTestObject>("same");
+
+    bool thrown = false;
+    try {
+        root.emplace<BasicTestObject>("same");
+    } catch (const ExceptionBase&) {
+        thrown = true;
     }
-};
 
-class ConstructionAncestorParent;
-
-class ConstructionAncestorChild {
-public:
-    explicit ConstructionAncestorChild(NodeBuild node);
-
-    bool sawReadyParent = false;
-};
-
-class ConstructionAncestorParent {
-public:
-    explicit ConstructionAncestorParent(NodeBuild node)
-        : ready(true), child(node.add<ConstructionAncestorChild>()) {}
-
-    bool ready = false;
-    Ref<ConstructionAncestorChild> child;
-};
-
-ConstructionAncestorChild::ConstructionAncestorChild(NodeBuild node) {
-    const auto parent = node.ancestor<ConstructionAncestorParent>();
-    sawReadyParent = parent->ready;
-}
-
-TEST(Node_Add, RuntimeFixture) {
-    auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<BasicTestComponent>(fixture.run_ctx.blueprints);
-
-    REQUIRE(!nodes.configure(fixture.root).find<BasicTestComponent>().exists());
-
-    fixture.build(fixture.root).add<BasicTestComponent>();
-
-    REQUIRE(nodes.configure(fixture.root).find<BasicTestComponent>().exists());
-    REQUIRE(nodes.registry.require(nodes.query.require(fixture.root, typeKey<BasicTestComponent>())).name.empty());
-    REQUIRE(nodes.configure(fixture.root).require<BasicTestComponent>().exists());
-}
-
-TEST(Node_BuildAncestor, RuntimeFixture) {
-    BlueprintRegister::add<ConstructionAncestorChild>(fixture.run_ctx.blueprints);
-    BlueprintRegister::add<ConstructionAncestorParent>(fixture.run_ctx.blueprints);
-
-    const auto parent = fixture.build(fixture.root).add<ConstructionAncestorParent>();
-
-    REQUIRE(parent->child.exists());
-    REQUIRE(parent->child->sawReadyParent);
-}
-
-TEST(Node_AddDuplicate, RuntimeFixture) {
-    auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<BasicTestComponent>(fixture.run_ctx.blueprints);
-
-    fixture.build(fixture.root).add<BasicTestComponent>();
-    fixture.build(fixture.root).add<BasicTestComponent>();
-
-    auto settings = nodes.query.collect(nodes.ops.root(fixture.root), typeKey<BasicTestComponent>());
-    REQUIRE(settings.size() == 1);
-}
-
-TEST(Node_CustomInstance, RuntimeFixture) {
-    auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<BasicTestComponent>(fixture.run_ctx.blueprints);
-
-    fixture.build(fixture.root).add<BasicTestComponent>("custom");
-
-    REQUIRE(nodes.configure(fixture.root).find<BasicTestComponent>("custom").exists());
-    REQUIRE(!nodes.configure(fixture.root).find<BasicTestComponent>("default").exists());
+    REQUIRE(thrown);
+    REQUIRE(nodes.query.collect(fixture.root, typeKey<BasicTestObject>()).size() == 1);
 }
 
 TEST(Node_InstanceIsolation, RuntimeFixture) {
     auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<BasicTestComponent>(fixture.run_ctx.blueprints);
+    auto root = fixture.build(fixture.root);
 
-    fixture.build(fixture.root).add<BasicTestComponent>("first");
-    fixture.build(fixture.root).add<BasicTestComponent>("second");
+    root.emplace<BasicTestObject>("first");
+    root.emplace<BasicTestObject>("second");
 
-    REQUIRE(nodes.configure(fixture.root).find<BasicTestComponent>("first").exists());
-    REQUIRE(nodes.configure(fixture.root).find<BasicTestComponent>("second").exists());
-    REQUIRE(!nodes.configure(fixture.root).find<BasicTestComponent>("default").exists());
-
-    auto settings = nodes.query.collect(nodes.ops.root(fixture.root), typeKey<BasicTestComponent>());
-
-    REQUIRE(settings.size() == 2);
+    REQUIRE(root.find<BasicTestObject>("first").exists());
+    REQUIRE(root.find<BasicTestObject>("second").exists());
+    REQUIRE(!root.find<BasicTestObject>("default").exists());
+    REQUIRE(nodes.query.collect(fixture.root, typeKey<BasicTestObject>()).size() == 2);
 }
 
 TEST(Node_RequireMissing, RuntimeFixture) {
-    auto& nodes = fixture.run_ctx.nodes;
+    auto root = fixture.build(fixture.root);
+    root.emplace<BasicTestObject>("other");
     bool thrown = false;
 
     try {
-        nodes.configure(fixture.root).require<BasicTestComponent>();
+        root.require<BasicTestObject>();
     } catch (const ExceptionBase&) {
         thrown = true;
     }
@@ -111,179 +67,68 @@ TEST(Node_RequireMissing, RuntimeFixture) {
     REQUIRE(thrown);
 }
 
-TEST(Node_RegisterAndAdd, RuntimeFixture) {
-    auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<BasicTestComponent>(fixture.run_ctx.blueprints);
-
-    fixture.build(fixture.root).add<BasicTestComponent>();
-
-    REQUIRE(nodes.configure(fixture.root).find<BasicTestComponent>().exists());
-    REQUIRE(nodes.configure(fixture.root).require<BasicTestComponent>().exists());
-}
-
-TEST(Node_Configure, RuntimeFixture) {
-    auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<BasicTestComponent>(fixture.run_ctx.blueprints);
-    fixture.build(fixture.root).add<BasicTestComponent>();
-
-    auto component = nodes.configure(fixture.root).require<BasicTestComponent>();
-
-    REQUIRE(!component->configured);
-
-    nodes.ops.configureBranch(fixture.root);
-
-    REQUIRE(component->configured);
-}
-
-TEST(Node_GlobalCollect, RuntimeFixture) {
-    auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<BasicTestComponent>(fixture.run_ctx.blueprints);
-
-    fixture.build(fixture.root).add<BasicTestComponent>("first");
-    fixture.build(fixture.root).add<BasicTestComponent>("second");
-
-    auto Node = nodes.query.collect(nodes.ops.root(fixture.root), typeKey<BasicTestComponent>());
-
-    REQUIRE(Node.size() == 2);
-}
-
-TEST(Node_folderCollect, RuntimeFixture) {
-    auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<BasicTestComponent>(fixture.run_ctx.blueprints);
-
-    fixture.build(fixture.root).add<BasicTestComponent>("root");
-
-    const NodeId branch = fixture.root;
-
-    fixture.build(branch).add<BasicTestComponent>("another");
-
-    auto Node = nodes.query.collect(branch, typeKey<BasicTestComponent>());
-
-    REQUIRE(Node.size() == 2);
-}
-
-TEST(Node_ChildVisibility, RuntimeFixture) {
-    auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<BasicTestComponent>(fixture.run_ctx.blueprints);
-
-    fixture.build(fixture.root).add<BasicTestComponent>();
-
-    auto child = nodes.configure(fixture.root).find<BasicTestComponent>();
-
-    REQUIRE(child.exists());
-}
-
 TEST(Node_ParentLookup, RuntimeFixture) {
-    auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<BasicTestComponent>(fixture.run_ctx.blueprints);
+    auto root = fixture.build(fixture.root);
+    root.emplace<BasicTestObject>("");
+    auto branch = root.branch("branch");
 
-    fixture.build(fixture.root).add<BasicTestComponent>();
-
-    const NodeId branch = nodes.factory.folder(fixture.root, "branch");
-
-    REQUIRE(nodes.configure(branch).find<BasicTestComponent>().exists());
-    REQUIRE(nodes.configure(branch).require<BasicTestComponent>().exists());
+    REQUIRE(branch.find<BasicTestObject>().exists());
+    REQUIRE(branch.require<BasicTestObject>().exists());
 }
 
 TEST(Node_Shadowing, RuntimeFixture) {
-    auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<BasicTestComponent>(fixture.run_ctx.blueprints);
+    auto root = fixture.build(fixture.root);
+    const auto parent = root.emplace<BasicTestObject>("");
+    auto branch = root.branch("branch");
+    const auto child = branch.emplace<BasicTestObject>("");
 
-    fixture.build(fixture.root).add<BasicTestComponent>();
-
-    const NodeId branch = nodes.factory.folder(fixture.root, "branch");
-    fixture.build(branch).add<BasicTestComponent>();
-
-    auto parent = nodes.configure(fixture.root).find<BasicTestComponent>();
-    auto child = nodes.configure(branch).find<BasicTestComponent>();
-
-    REQUIRE(parent.exists());
-    REQUIRE(child.exists());
+    REQUIRE(root.find<BasicTestObject>().get() == parent.get());
+    REQUIRE(branch.find<BasicTestObject>().get() == child.get());
 }
 
 TEST(Node_ChildInstanceLookup, RuntimeFixture) {
-    auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<BasicTestComponent>(fixture.run_ctx.blueprints);
+    auto root = fixture.build(fixture.root);
+    root.emplace<BasicTestObject>("root");
+    auto branch = root.branch("branch");
+    branch.emplace<BasicTestObject>("child");
 
-    fixture.build(fixture.root).add<BasicTestComponent>("root");
-
-    const NodeId branch = nodes.factory.folder(fixture.root, "branch");
-    fixture.build(branch).add<BasicTestComponent>("child");
-
-    REQUIRE(nodes.configure(branch).find<BasicTestComponent>("child").exists());
-    REQUIRE(nodes.configure(branch).find<BasicTestComponent>("root").exists());
-    REQUIRE(!nodes.configure(branch).find<BasicTestComponent>("missing").exists());
+    REQUIRE(branch.find<BasicTestObject>("child").exists());
+    REQUIRE(branch.find<BasicTestObject>("root").exists());
+    REQUIRE(!branch.find<BasicTestObject>("missing").exists());
 }
 
-TEST(Node_GlobalCollectNested, RuntimeFixture) {
-    auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<BasicTestComponent>(fixture.run_ctx.blueprints);
+TEST(Node_CollectSubtree, RuntimeFixture) {
+    auto root = fixture.build(fixture.root);
+    root.emplace<BasicTestObject>("root");
+    auto branch = root.branch("branch");
+    branch.emplace<BasicTestObject>("child");
 
-    fixture.build(fixture.root).add<BasicTestComponent>("root");
-
-    const NodeId branch = nodes.factory.folder(fixture.root, "branch");
-    fixture.build(branch).add<BasicTestComponent>("child");
-
-    auto Node = nodes.query.collect(nodes.ops.root(branch), typeKey<BasicTestComponent>());
-
-    REQUIRE(Node.size() == 2);
-}
-
-TEST(Node_folderCollectNested, RuntimeFixture) {
-    auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<BasicTestComponent>(fixture.run_ctx.blueprints);
-
-    fixture.build(fixture.root).add<BasicTestComponent>("root");
-
-    const NodeId branch = nodes.factory.folder(fixture.root, "branch");
-    fixture.build(branch).add<BasicTestComponent>("child");
-
-    auto Node = nodes.query.collect(branch, typeKey<BasicTestComponent>());
-
-    REQUIRE(Node.size() == 1);
+    REQUIRE(root.collect<BasicTestObject>().size() == 2);
+    REQUIRE(branch.collect<BasicTestObject>().size() == 1);
+    REQUIRE(root.children<BasicTestObject>().size() == 1);
 }
 
 TEST(Node_Remove, RuntimeFixture) {
     auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<BasicTestComponent>(fixture.run_ctx.blueprints);
+    auto root = fixture.build(fixture.root);
+    const auto object = root.emplace<BasicTestObject>("");
 
-    fixture.build(fixture.root).add<BasicTestComponent>();
+    nodes.ops.destroyBranch(object.id());
 
-    REQUIRE(nodes.configure(fixture.root).find<BasicTestComponent>().exists());
-
-    nodes.ops.destroyBranch(nodes.query.find(fixture.root, typeKey<BasicTestComponent>()));
-
-    REQUIRE(!nodes.configure(fixture.root).find<BasicTestComponent>().exists());
+    REQUIRE(!root.find<BasicTestObject>().exists());
 }
 
 TEST(Node_RemoveInstance, RuntimeFixture) {
     auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<BasicTestComponent>(fixture.run_ctx.blueprints);
+    auto root = fixture.build(fixture.root);
+    const auto first = root.emplace<BasicTestObject>("first");
+    root.emplace<BasicTestObject>("second");
 
-    fixture.build(fixture.root).add<BasicTestComponent>("first");
-    fixture.build(fixture.root).add<BasicTestComponent>("second");
+    nodes.ops.destroyBranch(first.id());
 
-    nodes.ops.destroyBranch(nodes.query.find(fixture.root, typeKey<BasicTestComponent>(), "first"));
-
-    REQUIRE(!nodes.configure(fixture.root).find<BasicTestComponent>("first").exists());
-    REQUIRE(nodes.configure(fixture.root).find<BasicTestComponent>("second").exists());
-
-    auto settings = nodes.query.collect(nodes.ops.root(fixture.root), typeKey<BasicTestComponent>());
-
-    REQUIRE(settings.size() == 1);
-}
-
-TEST(Node_RemoveMissing, RuntimeFixture) {
-    auto& nodes = fixture.run_ctx.nodes;
-    BlueprintRegister::add<BasicTestComponent>(fixture.run_ctx.blueprints);
-
-    fixture.build(fixture.root).add<BasicTestComponent>();
-
-    const auto missing = nodes.query.find(fixture.root, typeKey<BasicTestComponent>(), "missing");
-    REQUIRE(missing == InvalidNodeId);
-    if (missing != InvalidNodeId) nodes.ops.destroyBranch(missing);
-
-    REQUIRE(nodes.configure(fixture.root).find<BasicTestComponent>().exists());
+    REQUIRE(!root.find<BasicTestObject>("first").exists());
+    REQUIRE(root.find<BasicTestObject>("second").exists());
+    REQUIRE(root.collect<BasicTestObject>().size() == 1);
 }
 
 }

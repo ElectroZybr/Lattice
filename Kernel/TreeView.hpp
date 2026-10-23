@@ -30,7 +30,6 @@ struct TreeNodeInfo {
     std::string type;
     std::string implementation;
     bool hasObject = false;
-    bool configured = false;
 };
 
 // Lazy pre-order traversal. Structural mutation invalidates active iterators,

@@ -15,7 +15,6 @@ enum class NodeState : uint8_t {
 struct RuntimeObject {
     void* ptr = nullptr;
     BlueprintId bp = InvalidBlueprintId;
-    bool configured = false;
     bool building = false;
     bool constructed = false;
 };

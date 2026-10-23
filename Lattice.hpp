@@ -4,6 +4,7 @@
 #include <Lattice/Kernel/ServiceAPI.hpp>
 #include <Lattice/Kernel/Blueprints.hpp>
 #include <Lattice/Kernel/BasicTable.hpp>
+#include <Lattice/Kernel/TableExports.hpp>
 #include <Lattice/Kernel/NodeHandlers.hpp>
 #include <Lattice/Kernel/TreeView.hpp>
 #include <Lattice/Kernel/Exports.hpp>
@@ -11,7 +12,7 @@
 
 // Tools
 #include <Lattice/Tools/Exception.hpp>
-#include <Lattice/Tools/Logger.hpp>
+#include <Logger/Logger.hpp>
 #include <Lattice/Tools/TextStyle.hpp>
 #include <Lattice/Tools/TextTheme.hpp>
 #include <Lattice/Tools/TextPattern.hpp>

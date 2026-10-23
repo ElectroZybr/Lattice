@@ -1,9 +1,9 @@
 #include <cmath>
 #include <vector>
 
-#include <Lattice/Tools/BmRunner/Analysis.hpp>
-#include <Lattice/Tools/BmRunner/Metrics/Perf.hpp>
-#include <Lattice/Tools/BmRunner/Metrics/Time.hpp>
+#include <BmRunner/Analysis.hpp>
+#include <BmRunner/Metrics/Perf.hpp>
+#include <BmRunner/Metrics/Time.hpp>
 #include <Lattice/Tools/Tests.hpp>
 
 namespace Lattice {

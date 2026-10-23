@@ -2,7 +2,7 @@
 #include <Lattice/Tools/Tests.hpp>
 #include <Lattice/Tools/TextFormatter.hpp>
 #include <Lattice/Tools/TextPattern.hpp>
-#include <Lattice/Tools/Logger.hpp>
+#include <Logger/Logger.hpp>
 
 #include <vector>
 

@@ -5,16 +5,11 @@
 
 namespace Lattice {
 
-struct Component {};
-struct SubsystemAPI : public Component {};
-
 enum class NodeKind : uint8_t {
     Folder,
-    Component,
+    Object,
     Slot,
-    Binding,
-    Mount,
-    SharedMount
+    Binding
 };
 
 using NodeId = uint32_t;

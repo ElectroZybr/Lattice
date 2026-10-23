@@ -11,6 +11,9 @@ namespace Lattice {
 class LATTICE_API DependencyGraph {
 public:
     void add(NodeId dependent, NodeId dependency);
+    void retain(NodeId dependent, NodeId dependency);
+    bool retained(NodeId dependent, NodeId dependency) const;
+    void clearResolvedDependencies(NodeId node);
     void clearDependencies(NodeId node);
     void removeNode(NodeId node);
     void clear();
@@ -21,6 +24,7 @@ public:
 private:
     void ensure(NodeId node);
 
+    std::vector<std::vector<NodeId>> retained_;
     std::vector<std::vector<NodeId>> dependencies_;
     std::vector<std::vector<NodeId>> dependents_;
 };

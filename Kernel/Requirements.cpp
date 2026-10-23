@@ -1,5 +1,5 @@
 #include <Lattice/Kernel/Requirements.hpp>
-#include <Lattice/Tools/Logger.hpp>
+#include <Logger/Logger.hpp>
 #include "Lattice/Tools/TreeFormatter.hpp"
 
 #include <format>

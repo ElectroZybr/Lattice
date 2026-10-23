@@ -60,7 +60,7 @@ TEST(Plugin_DependencyOrder, RuntimeFixture,
 }
 
 TEST(Plugin_DependencyCycle, RuntimeFixture,
-    "Циклическая зависимость должна быть обнаружена до загрузки библиотек.")
+    "Циклическая зависимость должна быть обнаружена до регистрации пакетов.")
 {
     fixture.pluginManager.scanDirectory(
         "Lattice/tests/TestPlugins/CycleA"
@@ -128,37 +128,20 @@ TEST(Plugin_Consumer, RuntimeFixture,
     REQUIRE(consumer->library != nullptr);
 }
 
-TEST(Plugin_NoRegister, RuntimeFixture,
-    "Плагин без plugin_register должен завершиться ошибкой загрузки.")
+TEST(Plugin_NoCompose, RuntimeFixture,
+    "Пакет без compose должен завершиться ошибкой загрузки.")
 {
     fixture.pluginManager.scanDirectory(
-        "Lattice/tests/TestPlugins/NoRegister"
+        "Lattice/tests/TestPlugins/NoCompose"
     );
 
     fixture.pluginManager.checkCandidates();
     fixture.pluginManager.loadCandidates();
 
-    auto* plugin = fixture.pluginManager.findCandidate("NoRegister");
+    auto* plugin = fixture.pluginManager.findCandidate("NoCompose");
 
     REQUIRE(plugin);
     REQUIRE(plugin->status == LoadStatus::Failed);
-}
-
-TEST(Plugin_FailingRegister, RuntimeFixture,
-    "Плагин, вернувший false из plugin_register, не должен считаться загруженным.")
-{
-    fixture.pluginManager.scanDirectory(
-        "Lattice/tests/TestPlugins/FailingRegister"
-    );
-
-    fixture.pluginManager.checkCandidates();
-    fixture.pluginManager.loadCandidates();
-
-    auto* plugin = fixture.pluginManager.findCandidate("FailingRegister");
-
-    REQUIRE(plugin);
-    REQUIRE(plugin->status == LoadStatus::Failed);
-    REQUIRE(fixture.run_ctx.blueprints.find("Failed::PartialRegistration") == Blueprints::InvalidId);
 }
 
 TEST(Plugin_CheckCandidatesTwice, RuntimeFixture,
@@ -234,6 +217,28 @@ TEST(Plugin_DependencyLoad, RuntimeFixture,
 
     REQUIRE(fixture.pluginManager.queue()[0] == provider);
     REQUIRE(fixture.pluginManager.queue()[1] == consumer);
+}
+
+
+TEST(Plugin_LibraryWithoutMetadataIsSkipped, RuntimeFixture,
+    "Библиотека без lattice_package не считается пакетом.")
+{
+    fixture.pluginManager.scanDirectory("Lattice/tests/TestPlugins/NoMetadata");
+    REQUIRE(fixture.pluginManager.findCandidate("NoMetadata") == nullptr);
+}
+
+TEST(Plugin_MetadataIsTyped, RuntimeFixture,
+    "Метаданные пакета читаются из скомпилированного объекта.")
+{
+    fixture.pluginManager.scanDirectory("Lattice/tests/TestPlugins/Consumer");
+    auto* consumer = fixture.pluginManager.findCandidate("Consumer");
+    REQUIRE(consumer);
+    REQUIRE(consumer->manifest.version == (Version{1, 0, 0}));
+    REQUIRE(consumer->manifest.kernelApi == kernelApi);
+    REQUIRE(consumer->manifest.dependencies.size() == 1);
+    REQUIRE(consumer->manifest.dependencies[0].id == "Provider");
+    REQUIRE(consumer->manifest.dependencies[0].requirement.contains(Version{1, 2, 0}));
+    REQUIRE(!consumer->manifest.dependencies[0].requirement.contains(Version{0, 9, 0}));
 }
 
 }

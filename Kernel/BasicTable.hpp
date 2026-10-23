@@ -8,7 +8,6 @@
 #include <utility>
 
 #include <Lattice/Kernel/TableAPI.hpp>
-#include <Lattice/Kernel/NodeViews.hpp>
 
 
 namespace Lattice {
@@ -88,8 +87,6 @@ class BasicTable final : public Table {
 
 public:
     BasicTable() = default;
-    explicit BasicTable(::NodeBuild branch)
-        : Table(std::move(branch)) {}
     BasicTable(const BasicTable&) = delete;
     BasicTable& operator=(const BasicTable&) = delete;
     BasicTable(BasicTable&&) noexcept = default;

@@ -3,16 +3,22 @@
 #include <algorithm>
 #include <iterator>
 #include <optional>
+#include <memory>
+#include <functional>
+#include <tuple>
 
 #include <Lattice/Kernel/NodeFactory.hpp>
 #include <Lattice/Kernel/NodeHandlers.hpp>
 #include <Lattice/Kernel/Blueprints.hpp>
+#include <Lattice/Kernel/ObjectBlueprint.hpp>
 #include <Lattice/Tools/Exception.hpp>
 #include <Lattice/Kernel/NodeQuery.hpp>
 #include <Lattice/Kernel/NodeSystem.hpp>
+#include <Lattice/Kernel/CompositionArguments.hpp>
 #include <Lattice/Kernel/TreeView.hpp>
 #include <Lattice/Tools/TypeName.hpp>
 #include <Lattice/Kernel/Visibility.hpp>
+#include <Lattice/Kernel/ServiceAPI.hpp>
 
 
 // global types
@@ -239,115 +245,200 @@ class MountBuild {
     Lattice::NodeSystem* nodeSystem_ = nullptr;
     Lattice::NodeId owner_ = Lattice::InvalidNodeId;
     Lattice::NodeId target_ = Lattice::InvalidNodeId;
+    uint64_t ownerGeneration_ = 0;
+    uint64_t targetGeneration_ = 0;
 
 public:
     MountBuild(Lattice::NodeSystem& nodeSystem, Lattice::NodeId owner, Lattice::NodeId target)
-        : nodeSystem_(&nodeSystem), owner_(owner), target_(target) {}
+        : nodeSystem_(&nodeSystem), owner_(owner), target_(target),
+          ownerGeneration_(nodeSystem.registry.generation(owner)),
+          targetGeneration_(nodeSystem.registry.generation(target)) {}
 
     MountBuild(const MountBuild&) = delete;
     MountBuild& operator=(const MountBuild&) = delete;
 
-    MountBuild(MountBuild&&) = default;
+    MountBuild(MountBuild&& other) noexcept
+        : nodeSystem_(std::exchange(other.nodeSystem_, nullptr)),
+          owner_(std::exchange(other.owner_, Lattice::InvalidNodeId)),
+          target_(std::exchange(other.target_, Lattice::InvalidNodeId)),
+          ownerGeneration_(other.ownerGeneration_), targetGeneration_(other.targetGeneration_) {}
     MountBuild& operator=(MountBuild&&) = delete;
 
-    template<class U>
-    Ref<U> addLocal(std::string_view instance = Lattice::DefaultInstanceName) {
-        const auto api = nodeSystem_->blueprints.id<U>();
-        const auto id = nodeSystem_->factory.addLocal(owner_, target_, api, instance);
-        return Ref<U>{static_cast<U*>(nodeSystem_->query.resolve(id, api))};
-    }
-
-    template<class U>
-    Ref<U> addLocal(std::string_view instance, const typename U::Desc& desc) {
-        const auto api = nodeSystem_->blueprints.id<U>();
-        const auto id = nodeSystem_->factory.addLocal(owner_, target_, api, instance, &desc);
-        return Ref<U>{static_cast<U*>(nodeSystem_->query.resolve(id, api))};
-    }
-
-    template<class U>
-    Ref<U> addShare(std::string_view instance = Lattice::DefaultInstanceName) {
-        const auto api = nodeSystem_->blueprints.id<U>();
-        const auto id = nodeSystem_->factory.addShare(owner_, target_, api, instance);
-        return Ref<U>{static_cast<U*>(nodeSystem_->query.resolve(id, api))};
-    }
-
-    template<class U>
-    Ref<U> addShare(std::string_view instance, const typename U::Desc& desc) {
-        const auto api = nodeSystem_->blueprints.id<U>();
-        const auto id = nodeSystem_->factory.addShare(owner_, target_, api, instance, &desc);
-        return Ref<U>{static_cast<U*>(nodeSystem_->query.resolve(id, api))};
-    }
-
     Ref<T> ref() const {
-        return Ref<T>{
-            static_cast<T*>(nodeSystem_->query.resolve(target_, nodeSystem_->blueprints.id<T>()))
-        };
+        check();
+        return Lattice::detail::reference<T>(*nodeSystem_, target_);
     }
 
+private:
+    void check() const {
+        if (!nodeSystem_)
+            throw Lattice::Exception<MountBuild>("Mount builder was moved from");
+        const auto* owner = nodeSystem_->registry.get(owner_);
+        const auto* target = nodeSystem_->registry.get(target_);
+        if (!owner || !target || owner->state != Lattice::NodeState::Active ||
+            target->state != Lattice::NodeState::Active ||
+            nodeSystem_->registry.generation(owner_) != ownerGeneration_ ||
+            nodeSystem_->registry.generation(target_) != targetGeneration_)
+            throw Lattice::Exception<MountBuild>("Mount builder has expired or is retiring");
+    }
+
+public:
     Lattice::NodeId owner() const noexcept { return owner_; }
     Lattice::NodeId target() const noexcept { return target_; }
 };
 
 
 class NodeBuild {
+    template<class> friend class Lattice::Slot;
     Lattice::NodeId id_;
     Lattice::NodeSystem& nodeSystem_;
+    uint64_t generation_;
 
 public:
     NodeBuild(Lattice::NodeId id, Lattice::NodeSystem& nodeSystem)
-        : id_(id), nodeSystem_(nodeSystem) {}
+        : id_(id), nodeSystem_(nodeSystem), generation_(nodeSystem.registry.generation(id)) {}
 
-    // move-only
-    // NodeBuild(const NodeBuild&) = delete;
-    // NodeBuild& operator=(const NodeBuild&) = delete;
+    NodeBuild(const NodeBuild&) = delete;
+    NodeBuild& operator=(const NodeBuild&) = delete;
+    NodeBuild(NodeBuild&& other) noexcept
+        : id_(std::exchange(other.id_, Lattice::InvalidNodeId)), nodeSystem_(other.nodeSystem_),
+          generation_(std::exchange(other.generation_, 0)) {}
+    NodeBuild& operator=(NodeBuild&&) = delete;
 
-    // NodeBuild(NodeBuild&&) = default;
-    // NodeBuild& operator=(NodeBuild&&) = delete;
+    template<class T, class... APIs, class... Args>
+    Lattice::ObjectBuild<T> emplace(std::string_view instance, Args&&... args) {
+        check();
+        const auto type = Lattice::detail::ensureObject<T, APIs...>(nodeSystem_.blueprints);
+        auto arguments = std::forward_as_tuple(std::forward<Args>(args)...);
+        struct Arguments {
+            Lattice::NodeSystem& runtime;
+            decltype(arguments)& values;
+        } context{nodeSystem_, arguments};
+        const auto node = nodeSystem_.factory.emplace(id_, type, instance,
+            [](void* storage, Lattice::NodeId consumer, void* opaque) {
+                auto& context = *static_cast<Arguments*>(opaque);
+                std::apply([&](auto&&... values) {
+                    std::construct_at(static_cast<T*>(storage),
+                        Lattice::detail::compositionArgument(
+                            std::forward<decltype(values)>(values), context.runtime, consumer)...);
+                }, std::move(context.values));
+            }, &context);
+        return Lattice::ObjectBuild<T>{Ref<T>{static_cast<T*>(nodeSystem_.factory.resolve(node, type)),
+            &nodeSystem_, node, nodeSystem_.registry.generation(node)}};
+    }
 
-    template<class T> 
-    Ref<T> add(std::string_view instance = Lattice::DefaultInstanceName) {
-        auto api = nodeSystem_.blueprints.find(Lattice::typeKey<T>());
-        auto node = nodeSystem_.factory.component(id_, api, instance);
-        return Ref<T>{static_cast<T*>(nodeSystem_.factory.resolve(node, api))};
+    template<class T>
+    Lattice::OptionalRef<T> find(std::string_view instance = Lattice::DefaultInstanceName) const {
+        check();
+        const auto type = nodeSystem_.blueprints.find<T>();
+        if (type == Lattice::InvalidBlueprintId)
+            return {nullptr, &nodeSystem_, Lattice::InvalidNodeId};
+        const auto node = nodeSystem_.query.find(id_, type, instance);
+        const auto ref = Lattice::detail::reference<T>(nodeSystem_, node);
+        return {ref.get(), ref.runtime(), ref.id(), ref.generation()};
+    }
+
+    template<class T>
+    Ref<T> require(std::string_view instance = Lattice::DefaultInstanceName) const {
+        check();
+        const auto node = nodeSystem_.query.require(id_, nodeSystem_.blueprints.id<T>(), instance);
+        return Lattice::detail::reference<T>(nodeSystem_, node);
+    }
+
+    template<class T>
+    Lattice::Selection<T> children() const {
+        check();
+        std::vector<Ref<T>> result;
+        const auto type = nodeSystem_.blueprints.find<T>();
+        if (type != Lattice::InvalidBlueprintId)
+            for (auto child : nodeSystem_.registry.children(id_))
+                if (auto* object = static_cast<T*>(nodeSystem_.query.resolve(child, type)))
+                    result.push_back(Lattice::detail::reference<T>(nodeSystem_, child));
+        return Lattice::Selection<T>{std::move(result)};
+    }
+
+    template<class T>
+    Lattice::Selection<T> collect() const {
+        check();
+        std::vector<Ref<T>> result;
+        const auto type = nodeSystem_.blueprints.find<T>();
+        if (type != Lattice::InvalidBlueprintId)
+            for (auto node : nodeSystem_.query.collect(id_, type))
+                if (auto* object = static_cast<T*>(nodeSystem_.query.resolve(node, type)))
+                    result.push_back(Lattice::detail::reference<T>(nodeSystem_, node));
+        return Lattice::Selection<T>{std::move(result)};
+    }
+
+    template<class T, class... APIs, class... Args>
+    Lattice::ObjectBuild<T> emplaceShared(std::string_view instance, Args&&... args) {
+        check();
+        auto object = emplace<T, APIs...>(instance, std::forward<Args>(args)...);
+        nodeSystem_.factory.share(object.id(), nodeSystem_.blueprints.id<T>());
+        (nodeSystem_.factory.share(object.id(), nodeSystem_.blueprints.id<APIs>()), ...);
+        return object;
+    }
+
+    /// Nest another package's composition (registered by its id) as a child branch.
+    /// A failure rolls back together with the enclosing composition.
+    Lattice::NodeId compose(std::string_view composition, std::string_view instance = Lattice::DefaultInstanceName) {
+        check();
+        const auto type = nodeSystem_.blueprints.resolve(composition);
+        if (type == Lattice::InvalidBlueprintId || !nodeSystem_.blueprints.require(type).meta.compose)
+            throw Lattice::Exception<NodeBuild>("Unknown composition '{}'", composition);
+        return nodeSystem_.factory.component(id_, type, instance);
+    }
+
+    // Return a temporary build capability for a structural subbranch.
+    NodeBuild branch(std::string_view name) {
+        check();
+        return NodeBuild{nodeSystem_.factory.folder(id_, name), nodeSystem_};
     }
 
     template<typename API>
     Slot<API> addSlot(std::string_view instance = Lattice::DefaultInstanceName) {
-        const Lattice::NodeId node = nodeSystem_.factory.slot(id_, nodeSystem_.blueprints.id<API>(), instance);
+        check();
+        const Lattice::NodeId node = nodeSystem_.factory.slot(id_, Lattice::detail::ensureObject<API>(nodeSystem_.blueprints), instance);
         return Slot<API>{nodeSystem_.factory, nodeSystem_.query, nodeSystem_.blueprints, node};
     }
     
-    Lattice::NodeId addFolder(std::string_view name) { return nodeSystem_.factory.folder(id_, name); }
-    
-    template<class API>
-    void share() {
-        nodeSystem_.factory.share(id_, nodeSystem_.blueprints.id<API>());
+    /**
+     * @brief Obtain the contextual role owned by this branch.
+     * @param role Defaults to the registered API type key.
+     *
+     * An empty local scope inherits parent candidates/choices. Creating a Focus
+     * does not resolve a target, acquire ownership, or create dependency edges.
+     */
+    template<class T>
+    Focus<T> focus(std::string_view role = Lattice::typeKey<T>()) {
+        check();
+        const auto scope = nodeSystem_.context.createScope(id_);
+        return Focus<T>{nodeSystem_, scope, nodeSystem_.context.role(role)};
     }
 
-    template<class API> 
-    Children<API> addImpls() {
-        std::vector<API*> result;
-        auto api = nodeSystem_.blueprints.find(Lattice::typeKey<API>());
-
-        for (auto impl : nodeSystem_.blueprints.getImpls(api)) {
-            const std::string name = nodeSystem_.blueprints.require(impl).name;
-            auto node = nodeSystem_.factory.component(id_, impl, name);
-            result.push_back(static_cast<API*>(nodeSystem_.factory.resolve(node, api)));
-        }
-
-        return Children<API>{nodeSystem_, id_, std::move(result)};
+    /// Focus this branch on a live, compatible Context candidate. No ownership change.
+    template<class T, class U>
+    void focus(Ref<U> target) {
+        check();
+        Lattice::detail::resolveHandle(target, nodeSystem_);
+        const auto type = nodeSystem_.blueprints.find<T>();
+        if (type == Lattice::InvalidBlueprintId || !nodeSystem_.query.resolve(target.id(), type))
+            throw Lattice::Exception<NodeBuild>("Selected node does not provide '{}'", Lattice::typeKey<T>());
+        const auto scope = nodeSystem_.context.createScope(id_);
+        nodeSystem_.context.set(scope, nodeSystem_.context.role(Lattice::typeKey<T>()), target.id());
     }
 
     template<class T>
     MountBuild<T> mount() {
+        check();
         const auto api = nodeSystem_.blueprints.id<T>();
         const auto target = nodeSystem_.query.shared(id_, api);
-        nodeSystem_.dependencies.add(id_, target);
+        nodeSystem_.dependencies.retain(id_, target);
         return MountBuild<T>{nodeSystem_, id_, target};
     }
 
     template<typename T>
     Lattice::ExportId param(std::string_view name, T& value) {
+        check();
         const auto id = nodeSystem_.exports.param(id_, name, value);
         registerLocalExport(name);
         return id;
@@ -355,6 +446,7 @@ public:
 
     template<typename T>
     Lattice::ExportId globalParam(std::string_view name, T& value) {
+        check();
         const auto id = nodeSystem_.exports.param(id_, name, value);
         registerGlobalExport(name);
         return id;
@@ -362,6 +454,7 @@ public:
 
     template<typename... Args, typename F>
     Lattice::ExportId action(std::string_view name, F&& callback) {
+        check();
         const auto id = nodeSystem_.exports.action<Args...>(id_, name, std::forward<F>(callback));
         registerLocalExport(name);
         return id;
@@ -369,52 +462,44 @@ public:
 
     template<typename... Args, typename F>
     Lattice::ExportId globalAction(std::string_view name, F&& callback) {
+        check();
         const auto id = nodeSystem_.exports.action<Args...>(id_, name, std::forward<F>(callback));
         registerGlobalExport(name);
         return id;
     }
 
     void alias(std::string_view name, Lattice::ExportId target) {
+        check();
         nodeSystem_.exports.alias(id_, name, target);
         registerLocalExport(name);
     }
 
     void globalAlias(std::string_view name, Lattice::ExportId target) {
+        check();
         nodeSystem_.exports.alias(id_, name, target);
         registerGlobalExport(name);
     }
 
-    Lattice::TreeView tree() const { return Lattice::TreeView{nodeSystem_}; }
-
-    template<class T>
-    Ref<T> ancestor() const {
-        const auto api = nodeSystem_.blueprints.id<T>();
-        const auto found = nodeSystem_.query.ancestor(id_, api);
-
-        if (found != Lattice::InvalidNodeId) {
-            auto* object = static_cast<T*>(nodeSystem_.query.resolveAncestor(id_, found, api));
-            if (object) {
-                nodeSystem_.dependencies.add(id_, found);
-                return Ref<T>{object};
-            }
-        }
-
-        throw Lattice::Exception<NodeBuild>(
-            "Ancestor '{}' not found for node #{}",
-            Lattice::typeKey<T>(),
-            id_
-        );
-    }
+    Lattice::TreeView tree() const { check(); return Lattice::TreeView{nodeSystem_}; }
+    // Runtime views for infrastructure objects (routers, shells); pass to constructors.
+    ExportsView exports() const { check(); return ExportsView{nodeSystem_}; }
 
     // helpers
     Lattice::NodeId id() const noexcept { return id_; }
-    std::string_view name() const { return nodeSystem_.registry.require(id_).name; }
-    Lattice::NodeId parent() const { return nodeSystem_.registry.require(id_).parent; }
-    Lattice::NodeKind kind() const { return nodeSystem_.registry.require(id_).kind; }
-    Lattice::BlueprintId blueprint() const { return nodeSystem_.registry.require(id_).bp; }
-    Lattice::BlueprintId implementation() const { return nodeSystem_.registry.require(id_).object.bp; }
+    std::string_view name() const { check(); return nodeSystem_.registry.require(id_).name; }
+    Lattice::NodeId parent() const { check(); return nodeSystem_.registry.require(id_).parent; }
+    Lattice::NodeKind kind() const { check(); return nodeSystem_.registry.require(id_).kind; }
+    Lattice::BlueprintId blueprint() const { check(); return nodeSystem_.registry.require(id_).bp; }
+    Lattice::BlueprintId implementation() const { check(); return nodeSystem_.registry.require(id_).object.bp; }
 
 private:
+    void check() const {
+        const auto* node = nodeSystem_.registry.get(id_);
+        if (!node || node->state != Lattice::NodeState::Active ||
+            nodeSystem_.registry.generation(id_) != generation_)
+            throw Lattice::Exception<NodeBuild>("Builder is moved-from, expired or retiring");
+    }
+
     void registerLocalExport(std::string_view name) {
         const Lattice::ContextScopeId scope = nodeSystem_.context.createScope(id_);
         nodeSystem_.context.addCandidate(scope, nodeSystem_.context.role(name), id_);
@@ -430,126 +515,279 @@ private:
     }
 };
 
-
-class LATTICE_API NodeConfigure {
-    Lattice::NodeId id_;
-    Lattice::NodeSystem& nodeSystem_;
-
-public:
-    NodeConfigure(Lattice::NodeId id, Lattice::NodeSystem& nodeSystem)
-        : id_(id), nodeSystem_(nodeSystem){}
-
-    template<typename T>
-    Focus<T> focus(std::string_view role = Lattice::typeKey<T>()) {
-        return Focus<T>{nodeSystem_.context, nodeSystem_.query, nodeSystem_.context.nearestScope(id_), nodeSystem_.context.role(role)};
-    }
-
-    template<class T>
-    std::vector<T*> collect() const {
-        std::vector<T*> result;
-        const auto api = nodeSystem_.blueprints.id<T>();
-
-        for (Lattice::NodeId target : nodeSystem_.query.collect(id_, api))
-            if (auto* ptr = resolve<T>(target))
-                result.push_back(ptr);
-
-        return result;
-    }
-
-    template<class T>
-    Children<T> children() const {
-        std::vector<T*> result;
-        const auto api = nodeSystem_.blueprints.id<T>();
-
-        for (Lattice::NodeId child : nodeSystem_.registry.children(id_))
-            if (auto* ptr = static_cast<T*>(nodeSystem_.query.resolve(child, api)))
-                result.push_back(ptr);
-
-        return Children<T>{nodeSystem_, id_, std::move(result)};
-    }
-
-    Lattice::NodeId findId(std::string_view api, std::string_view instance = Lattice::DefaultInstanceName) const;
-    Lattice::NodeId requireId(std::string_view api, std::string_view instance = Lattice::DefaultInstanceName) const;
-
-    template<class T>
-    Ref<T> find(std::string_view instance = Lattice::DefaultInstanceName) const {
-        const auto found = findId(Lattice::typeKey<T>(), instance);
-        return Ref<T>{found == Lattice::InvalidNodeId ? nullptr : resolve<T>(found)};
-    }
-
-    template<class T>
-    Ref<T> require(std::string_view instance = Lattice::DefaultInstanceName) const {
-        return Ref<T>{resolve<T>(requireId(Lattice::typeKey<T>(), instance))};
-    }
-
-    template<class T>
-    std::optional<Slot<T>> findSlot(std::string_view instance = Lattice::DefaultInstanceName) const {
-        const Lattice::NodeId found = findId(Lattice::typeKey<T>(), instance);
-        if (found == Lattice::InvalidNodeId || nodeSystem_.registry.require(found).kind != Lattice::NodeKind::Slot)
-            return std::nullopt;
-        return Slot<T>{nodeSystem_.factory, nodeSystem_.query, nodeSystem_.blueprints, found};
-    }
-
-    template<class T>
-    Slot<T> requireSlot(std::string_view instance = Lattice::DefaultInstanceName) const {
-        auto slot = findSlot<T>(instance);
-        if (!slot)
-            throw Lattice::Exception<NodeConfigure>("Slot '{}' with instance '{}' not found", Lattice::typeKey<T>(), instance);
-        return *slot;
-    }
-
-    template<class T>
-    T* resolve(Lattice::NodeId id) const {
-        auto* object = static_cast<T*>(nodeSystem_.query.resolve(id, Lattice::typeKey<T>()));
-        if (object)
-            nodeSystem_.dependencies.add(id_, id);
-        return object;
-    }
-
-    ExportsView exports() {
-        return ExportsView{nodeSystem_};
-    }
-
-    Lattice::TreeView tree() const { return Lattice::TreeView{nodeSystem_}; }
-
-    // helpers
-    Lattice::NodeId id() const noexcept { return id_; }
-    std::string_view name() const { return nodeSystem_.registry.require(id_).name; }
-    Lattice::NodeId parent() const { return nodeSystem_.registry.require(id_).parent; }
-    Lattice::NodeKind kind() const { return nodeSystem_.registry.require(id_).kind; }
-    Lattice::BlueprintId blueprint() const { return nodeSystem_.registry.require(id_).bp; }
-    Lattice::BlueprintId implementation() const { return nodeSystem_.registry.require(id_).object.bp; }
-};
-
 namespace Lattice {
 
-template<typename T>
-NodeId Children<T>::add(std::string_view name) {
-    if (!nodes_ || owner_ == InvalidNodeId)
-        throw Exception<Children<T>>("Children handler is not initialized");
+template<class T>
+Slot<T>::Slot(NodeFactory& factory, NodeQuery&, Blueprints&, NodeId id)
+    : runtime_(&factory.nodeSystem_), id_(id), generation_(runtime_->registry.generation(id)) {}
 
-    const BlueprintId api = nodes_->blueprints.id<T>();
-    const NodeId child = nodes_->builder.add(owner_, api, name);
-    items.push_back(static_cast<T*>(nodes_->query.resolve(child, api)));
-    return child;
+template<class T>
+bool Slot<T>::valid() const noexcept {
+    const auto* node = runtime_ ? runtime_->registry.get(id_) : nullptr;
+    return node && node->kind == NodeKind::Slot && node->state == NodeState::Active &&
+        runtime_->registry.generation(id_) == generation_;
 }
 
-template<typename T>
-void Children<T>::del(NodeId child) {
-    if (!nodes_ || owner_ == InvalidNodeId)
-        throw Exception<Children<T>>("Children handler is not initialized");
+template<class T>
+T* Slot<T>::get() const {
+    return valid() ? static_cast<T*>(runtime_->query.resolve(id_, runtime_->blueprints.id<T>())) : nullptr;
+}
 
-    const auto& node = nodes_->registry.require(child);
-    if (node.parent != owner_)
-        throw Exception<Children<T>>("Node #{} is not a direct child of node #{}", child, owner_);
+template<class T>
+Ref<T> Slot<T>::ref() const {
+    if (!valid() || !get())
+        throw Exception<Slot>("Slot is empty, retiring, or expired");
+    return detail::reference<T>(*runtime_, id_);
+}
 
-    const BlueprintId api = nodes_->blueprints.id<T>();
-    auto* object = static_cast<T*>(nodes_->query.resolve(child, api));
+template<class T>
+bool Slot<T>::choice(BlueprintId implementation) {
+    if (!valid())
+        throw Exception<Slot>("Slot has expired or is retiring");
+    return runtime_->factory.choice(id_, implementation);
+}
+
+template<class T>
+template<class Result>
+bool Slot<T>::choice(std::string_view name, Result (*compose)(::NodeBuild&)) {
+    if (!valid() || !compose)
+        throw Exception<Slot>("Slot requires a live scope and composition function");
+    struct Adapter {
+        Result (*function)(::NodeBuild&);
+        NodeId operator()(::NodeBuild& branch) const {
+            auto result = function(branch);
+            if (result.runtime() != &branch.nodeSystem_)
+                throw Exception<Slot>("Composition must return an object from this runtime");
+            using Object = std::remove_pointer_t<decltype(result.get())>;
+            if constexpr (!std::is_same_v<Object, T>)
+                detail::ensureObject<Object, T>(branch.nodeSystem_.blueprints);
+            if constexpr (requires { result.ref(); })
+                detail::resolveHandle(result.ref(), *result.runtime());
+            else
+                detail::resolveHandle(result, *result.runtime());
+            return result.id();
+        }
+    };
+    auto& blueprints = runtime_->blueprints;
+    const auto api = blueprints.id<T>();
+    auto implementation = blueprints.find(name);
+    if (implementation == InvalidBlueprintId) {
+        Blueprint blueprint{.name = std::string(name), .bases = {api}};
+        blueprint.meta.composeSlot = Adapter{compose};
+        implementation = blueprints.create(std::move(blueprint), std::string(name));
+    } else {
+        const auto& blueprint = blueprints.require(implementation);
+        const auto* adapter = blueprint.meta.composeSlot.template target<Adapter>();
+        if (!adapter || adapter->function != compose || !blueprints.isA(implementation, api))
+            throw Exception<Slot>("Composition name '{}' is already registered differently", name);
+    }
+    return choice(implementation);
+}
+
+template<class T>
+Focus<T>::Focus(NodeSystem& runtime, ContextScopeId scope, RoleId role)
+    : runtime_(&runtime), scope_(scope), role_(role) {
+    const auto* context = runtime.context.scope(scope);
+    if (!context)
+        throw Exception<Focus>("Focus requires a live branch scope");
+    owner_ = context->owner;
+    ownerGeneration_ = runtime.registry.generation(owner_);
+}
+
+template<class T>
+bool Focus<T>::valid() const noexcept {
+    if (!runtime_ || !runtime_->context.hasRole(role_))
+        return false;
+    const auto* scope = runtime_->context.scope(scope_);
+    const auto* owner = runtime_->registry.get(owner_);
+    return scope && scope->owner == owner_ && owner && owner->state == NodeState::Active &&
+        runtime_->registry.generation(owner_) == ownerGeneration_;
+}
+
+template<class T>
+NodeId Focus<T>::id() const {
+    return valid() ? runtime_->context.resolve(scope_, role_) : InvalidNodeId;
+}
+
+template<class T>
+T* Focus<T>::get() const {
+    const auto target = id();
+    const auto type = runtime_ ? runtime_->blueprints.find<T>() : InvalidBlueprintId;
+    return target == InvalidNodeId || type == InvalidBlueprintId ? nullptr :
+        static_cast<T*>(runtime_->query.resolve(target, type));
+}
+
+template<class T>
+Ref<T> Focus<T>::ref() const {
+    if (!valid())
+        throw Exception<Focus>("Focus scope has expired or is retiring");
+    const auto resolution = runtime_->context.resolveInfo(scope_, role_);
+    if (resolution.state == ContextResolutionState::Ambiguous)
+        throw Exception<Focus>("Context role '{}' is ambiguous", runtime_->context.roleName(role_));
+    if (resolution.state == ContextResolutionState::Missing)
+        throw Exception<Focus>("Context role '{}' is missing", runtime_->context.roleName(role_));
+    auto* object = get();
     if (!object)
-        throw Exception<Children<T>>("Node #{} does not provide '{}'", child, typeKey<T>());
+        throw Exception<Focus>("Context role '{}' has no available '{}' object",
+            runtime_->context.roleName(role_), typeKey<T>());
+    return detail::reference<T>(*runtime_, resolution.target);
+}
 
-    nodes_->builder.del(owner_, child);
-    std::erase(items, object);
+template<class T>
+void Focus<T>::reset() {
+    if (!valid())
+        throw Exception<Focus>("Focus scope has expired or is retiring");
+    runtime_->context.reset(scope_, role_);
+}
+
+template<class T>
+Ref<T> ObjectBuild<T>::ref() const {
+    if (!this->runtime())
+        throw Exception<ObjectBuild>("Object builder was moved from");
+    detail::resolveHandle(static_cast<const Ref<T>&>(*this), *this->runtime());
+    return static_cast<const Ref<T>&>(*this);
+}
+
+namespace detail {
+
+template<class... Args>
+inline constexpr bool leadingContext = false;
+template<class... Rest>
+inline constexpr bool leadingContext<ActionContext&, Rest...> = true;
+
+// Register a method of a live object as an action owned by that object's node.
+// A leading ActionContext& parameter receives the invocation context.
+template<bool Global, class T, class Member, class... Args>
+ExportId objectAction(Ref<T> object, std::string_view name, Member member) {
+    ::NodeBuild node{object.id(), *object.runtime()};
+    const auto add = [&]<class... Exported>(auto callback) {
+        if constexpr (Global)
+            return node.template globalAction<Exported...>(name, std::move(callback));
+        else
+            return node.template action<Exported...>(name, std::move(callback));
+    };
+    if constexpr (leadingContext<Args...>) {
+        return [&]<class Context, class... Rest>(std::type_identity<void(Context, Rest...)>) {
+            return add.template operator()<Rest...>([object, member](ActionContext& context, Rest... args) {
+                return std::invoke(member, *object, context, std::forward<Rest>(args)...);
+            });
+        }(std::type_identity<void(Args...)>{});
+    } else {
+        return add.template operator()<Args...>([object, member](Args... args) {
+            return std::invoke(member, *object, std::forward<Args>(args)...);
+        });
+    }
+}
+
+}
+
+template<class T>
+template<class Value, class Owner>
+ExportId ObjectBuild<T>::param(std::string_view name, Value Owner::* member) {
+    auto object = ref();
+    return ::NodeBuild{object.id(), *object.runtime()}.param(name, (*object).*member);
+}
+
+template<class T>
+template<class Value>
+ExportId ObjectBuild<T>::param(std::string_view name, Value& value) {
+    auto object = ref();
+    return ::NodeBuild{object.id(), *object.runtime()}.param(name, value);
+}
+
+template<class T>
+template<class Owner, class Result, class... Args>
+ExportId ObjectBuild<T>::action(std::string_view name, Result (Owner::*member)(Args...)) {
+    return detail::objectAction<false, T, decltype(member), Args...>(ref(), name, member);
+}
+
+template<class T>
+template<class Owner, class Result, class... Args>
+ExportId ObjectBuild<T>::action(std::string_view name, Result (Owner::*member)(Args...) const) {
+    return detail::objectAction<false, T, decltype(member), Args...>(ref(), name, member);
+}
+
+template<class T>
+template<class... Args, class F>
+    requires (!std::is_member_function_pointer_v<std::decay_t<F>>)
+ExportId ObjectBuild<T>::action(std::string_view name, F&& callback) {
+    auto object = ref();
+    ::NodeBuild node{object.id(), *object.runtime()};
+    if constexpr (std::is_invocable_v<F&, T&, ActionContext&, Args...>)
+        return node.template action<Args...>(name,
+            [object, callback = std::forward<F>(callback)](ActionContext& context, Args... args) mutable {
+                std::invoke(callback, *object, context, std::forward<Args>(args)...);
+            });
+    else {
+        static_assert(std::is_invocable_v<F&, T&, Args...>,
+            "Object action callback must accept (T&, [ActionContext&,] Args...)");
+        return node.template action<Args...>(name,
+            [object, callback = std::forward<F>(callback)](Args... args) mutable {
+                std::invoke(callback, *object, std::forward<Args>(args)...);
+            });
+    }
+}
+
+template<class T>
+template<class Owner, class Result, class... Args>
+ExportId ObjectBuild<T>::globalAction(std::string_view name, Result (Owner::*member)(Args...)) {
+    return detail::objectAction<true, T, decltype(member), Args...>(ref(), name, member);
+}
+
+template<class T>
+template<class Owner, class Result, class... Args>
+ExportId ObjectBuild<T>::globalAction(std::string_view name, Result (Owner::*member)(Args...) const) {
+    return detail::objectAction<true, T, decltype(member), Args...>(ref(), name, member);
+}
+
+template<class T>
+template<class F>
+void ObjectBuild<T>::onRetire(F&& callback) {
+    static_assert(std::is_invocable_r_v<void, F&, T&>);
+    auto object = ref();
+    object.runtime()->ops.onRetire(object.id(),
+        [callback = std::forward<F>(callback)](void* ptr) mutable {
+            std::invoke(callback, *static_cast<T*>(ptr));
+        });
+}
+
+template<class T>
+template<class F>
+void ObjectBuild<T>::readyToDestroy(F&& callback) {
+    static_assert(std::is_invocable_r_v<bool, F&, const T&>);
+    auto object = ref();
+    object.runtime()->ops.readyToDestroy(object.id(),
+        [callback = std::forward<F>(callback)](const void* ptr) mutable {
+            return static_cast<bool>(std::invoke(callback, *static_cast<const T*>(ptr)));
+        });
+}
+
+template<class T>
+template<class Run, class Stop>
+void ObjectBuild<T>::service(Run run, Stop stop) {
+    static_assert(std::is_invocable_v<Run&, T&> ||
+        std::is_invocable_v<Run&, T&, const ServiceRunner::Idle&>,
+        "Service run must accept (T&) or (T&, const std::function<void()>& idle)");
+    static_assert(std::is_invocable_v<Stop&, T&>, "Service stop must accept (T&)");
+    auto object = ref();
+    std::function<void(const ServiceRunner::Idle&)> runService;
+    if constexpr (std::is_invocable_v<Run&, T&, const ServiceRunner::Idle&>)
+        runService = [object, run](const ServiceRunner::Idle& idle) mutable {
+            std::invoke(run, *object, idle);
+        };
+    else
+        runService = [object, run](const ServiceRunner::Idle&) mutable {
+            std::invoke(run, *object);
+        };
+    std::function<void()> stopService = [object, stop]() mutable { std::invoke(stop, *object); };
+
+    auto* runtime = object.runtime();
+    auto runner = ::NodeBuild{object.id(), *runtime}.template emplace<ServiceRunner, ServiceAPI>(
+        "service", std::move(runService), std::move(stopService));
+    // The runner uses the object until its thread is joined.
+    runtime->dependencies.retain(runner.id(), object.id());
+    runner.onRetire([](ServiceRunner& service) { service.retire(); });
+    runner.readyToDestroy([](const ServiceRunner& service) { return service.readyToDestroy(); });
 }
 
 }
