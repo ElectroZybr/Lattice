@@ -1,4 +1,4 @@
--- сборка плагина
+-- сборка тестового пакета
 target("TestCycleB")
     set_kind("shared")
     set_targetdir(".")

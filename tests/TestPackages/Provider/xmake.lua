@@ -1,5 +1,5 @@
--- сборка плагина
-target("TestMissingDependency")
+-- сборка тестового пакета
+target("TestProvider")
     set_kind("shared")
     set_targetdir(".")
     add_files("package.cpp")

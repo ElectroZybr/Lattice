@@ -69,18 +69,18 @@ struct VersionRange {
     }
 };
 
-struct PluginDependency {
+struct PackageRequirement {
     std::string id;
     VersionRange requirement;
 };
 
-struct PluginManifest {
+struct PackageManifest {
     std::string id;
     std::string name;
     Version version;
     Version kernelApi{};
 
-    std::vector<PluginDependency> dependencies;
+    std::vector<PackageRequirement> dependencies;
 };
 
 enum class LoadStatus {
@@ -96,11 +96,11 @@ enum class LoadStatus {
     Failed
 };
 
-using PluginComposeFn = void(*)(::NodeBuild);
+using PackageComposeFn = void(*)(::NodeBuild);
 
-struct Plugin {
+struct PackageCandidate {
     std::filesystem::path path;
-    PluginManifest manifest;
+    PackageManifest manifest;
     LoadStatus status = LoadStatus::NonChecked;
     DynamicLibrary* library = nullptr;
     std::vector<std::string> providedAPIs;

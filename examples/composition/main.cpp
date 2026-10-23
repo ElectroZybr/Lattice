@@ -5,7 +5,7 @@
 
 #include <Lattice/Composition.hpp>
 #include <Lattice/Kernel/Context.hpp>
-#include <Lattice/Kernel/PluginManager.hpp>
+#include <Lattice/Kernel/PackageManager.hpp>
 #include "model.hpp"
 
 namespace {
@@ -23,8 +23,8 @@ int main(int argc, char** argv) {
     // Loaded code must outlive objects and blueprints that refer to it.
     DLLoader libraries;
     Lattice::Context runtime;
-    Lattice::PluginManager plugins(runtime.blueprints, libraries);
-    if (plugins.load(argv[1]) != 1)
+    Lattice::PackageManager packages(runtime.blueprints, libraries);
+    if (packages.load(argv[1]) != 1)
         return 1;
     auto& nodes = runtime.nodes;
     const auto branch = nodes.builder.add(

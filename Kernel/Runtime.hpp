@@ -10,7 +10,7 @@
 
 #include <Lattice/Kernel/ServiceAPI.hpp>
 #include <Lattice/Kernel/Consts.hpp>
-#include <Lattice/Kernel/PluginManager.hpp>
+#include <Lattice/Kernel/PackageManager.hpp>
 #include <Lattice/Kernel/StartupConfig.hpp>
 #include <Lattice/Kernel/Requirements.hpp>
 #include <Lattice/Kernel/Node.hpp>
@@ -40,12 +40,12 @@ class Runtime {
     NodeId root = InvalidNodeId;
     NodeId host = InvalidNodeId;
     DLLoader dlLoader;
-    PluginManager pluginManager;
+    PackageManager packageManager;
     std::atomic<bool> running{true};
     inline static volatile std::sig_atomic_t interrupted = 0;
     
 public:
-    Runtime() : pluginManager(run_ctx.blueprints, dlLoader) {
+    Runtime() : packageManager(run_ctx.blueprints, dlLoader) {
         root = run_ctx.nodes.factory.folder(InvalidNodeId, "Root");
 
         ::NodeBuild node{root, run_ctx.nodes};
@@ -98,8 +98,8 @@ public:
 
             { // инициализация ядра
                 LogScope scope(tag, "<b>System loading</>");
-                // загрузка плагинов
-                pluginManager.load("Packages");
+                // загрузка пакетов
+                packageManager.load("Packages");
                 scope.finish("<ok>Loaded</>");
             }
             
@@ -130,7 +130,7 @@ public:
             if (host != InvalidNodeId) {
                 auto* service = branchService(host);
                 if (!service) throw Exception<Runtime>("Host branch declares no service");
-                service->enter(run_ctx.nodes.ops);
+                service->enter(run_ctx.nodes.ops, [] { return interrupted != 0; });
                 run_ctx.nodes.ops.maintain();
             } else {
                 while (running && !interrupted) {

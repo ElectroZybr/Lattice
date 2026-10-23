@@ -1,5 +1,5 @@
--- сборка плагина
-target("TestCycleA")
+-- сборка тестового пакета
+target("TestNoMetadata")
     set_kind("shared")
     set_targetdir(".")
     add_files("package.cpp")

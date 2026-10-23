@@ -1,5 +1,5 @@
--- сборка плагина
-target("TestProvider")
+-- сборка тестового пакета
+target("TestEmpty")
     set_kind("shared")
     set_targetdir(".")
     add_files("package.cpp")

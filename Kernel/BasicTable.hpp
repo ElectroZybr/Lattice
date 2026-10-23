@@ -16,7 +16,7 @@ namespace Lattice {
  * Default owning table implementation supplied by the kernel.
  *
  * Every column is a typed contiguous array. The implementation is intended
- * for general-purpose data; specialized plugins may provide another Table
+ * for general-purpose data; specialized packages may provide another Table
  * implementation without changing consumers.
  */
  

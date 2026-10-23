@@ -1,5 +1,5 @@
--- сборка плагина
-target("TestNoMetadata")
+-- сборка тестового пакета
+target("TestMissingDependency")
     set_kind("shared")
     set_targetdir(".")
     add_files("package.cpp")

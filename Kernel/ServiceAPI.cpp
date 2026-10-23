@@ -2,12 +2,13 @@
 
 #include <Lattice/Kernel/NodeOps.hpp>
 
-void ServiceAPI::enter(Lattice::NodeOps& hostOps) {
+void ServiceAPI::enter(Lattice::NodeOps& hostOps, std::function<bool()> interrupted) {
     if (running_.exchange(true))
         return;
 
     host_ = true;
     hostOps_ = &hostOps;
+    interrupted_ = std::move(interrupted);
 
     try {
         run();
@@ -21,9 +22,11 @@ void ServiceAPI::enter(Lattice::NodeOps& hostOps) {
     running_ = false;
 }
 
-bool ServiceAPI::stopRequested() const {
+bool ServiceAPI::stopRequested() {
     if (hostOps_)
         hostOps_->maintain();
+    if (interrupted_ && interrupted_() && !stopRequested_.load())
+        requestStop();
 
     return stopRequested_.load();
 }

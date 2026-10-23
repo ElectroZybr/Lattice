@@ -8,13 +8,13 @@
 namespace Lattice {
 namespace {
 
-const PluginCatalog* catalogFor(std::string_view name, const Blueprints& blueprints) {
+const PackageCatalog* catalogFor(std::string_view name, const Blueprints& blueprints) {
     BlueprintId id = blueprints.resolve(name);
 
     if (id == Blueprints::InvalidId)
         return nullptr;
 
-    for (const auto& catalog : pluginCatalogs())
+    for (const auto& catalog : packageCatalogs())
         for (BlueprintId provided : catalog.provided)
             if (provided == id)
                 return &catalog;
@@ -29,7 +29,7 @@ std::vector<std::string> collectUniqueList(std::string_view name, const Blueprin
 
     auto walk = [&](auto&& self, std::string_view currentName) -> void {
         if (!visited.insert(std::string(currentName)).second) return;
-        const PluginCatalog* catalog = catalogFor(currentName, blueprints);
+        const PackageCatalog* catalog = catalogFor(currentName, blueprints);
         if (!catalog)
             return;
 
@@ -51,7 +51,7 @@ void appendComposition(Lattice::TreeFormatter& tree, std::string_view name, size
     if (!seen.insert(std::string(name)).second)
         return;
 
-    const PluginCatalog* catalog = catalogFor(name, blueprints);
+    const PackageCatalog* catalog = catalogFor(name, blueprints);
     if (!catalog)
         return;
 
@@ -139,14 +139,14 @@ std::vector<CompileDep>& compileDepSink() {
     return sink;
 }
 
-std::vector<PluginCatalog>& pluginCatalogs() {
-    static std::vector<PluginCatalog> catalogs;
+std::vector<PackageCatalog>& packageCatalogs() {
+    static std::vector<PackageCatalog> catalogs;
     return catalogs;
 }
 
-void recordPluginCatalog(PluginCatalog catalog) {
-    Logger::info(tag, "plugin '{}' compile deps: {}", catalog.pluginId, catalog.deps.size());
-    pluginCatalogs().push_back(std::move(catalog));
+void recordPackageCatalog(PackageCatalog catalog) {
+    Logger::info(tag, "package '{}' compile deps: {}", catalog.packageId, catalog.deps.size());
+    packageCatalogs().push_back(std::move(catalog));
 }
 
 } // namespace Lattice

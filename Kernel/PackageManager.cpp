@@ -1,7 +1,7 @@
-#include <Lattice/Kernel/PluginManager.hpp>
+#include <Lattice/Kernel/PackageManager.hpp>
 #include <Lattice/Kernel/Requirements.hpp>
 #include <Logger/Logger.hpp>
-#include <Lattice/Kernel/Plugin.hpp>
+#include <Lattice/Kernel/PackageCandidate.hpp>
 #include "Logger/LogScope.hpp"
 
 #include <algorithm>
@@ -10,8 +10,8 @@
 
 namespace Lattice {
 
-    uint16_t PluginManager::load(std::filesystem::path path) {
-        // загрузка внешних плагинов
+    uint16_t PackageManager::load(std::filesystem::path path) {
+        // загрузка внешних пакетов
         scanDirectory(path);
         checkCandidates();
         return loadCandidates();
@@ -23,8 +23,8 @@ namespace Lattice {
         return file.extension() == DynamicLibrary::extension() && !file.stem().has_extension();
     }
 
-    PluginManifest manifestOf(const Package& package) {
-        PluginManifest manifest{
+    PackageManifest manifestOf(const Package& package) {
+        PackageManifest manifest{
             .id = std::string(package.id),
             .name = std::string(package.name.empty() ? package.id : package.name),
             .version = package.version,
@@ -44,7 +44,7 @@ namespace Lattice {
     }
 
     // A directory is a package itself or contains packages one level below.
-    void PluginManager::scanDirectory(std::filesystem::path path) {
+    void PackageManager::scanDirectory(std::filesystem::path path) {
         if (!std::filesystem::is_directory(path)) {
             Logger::warning(tag, "Package directory '{}' does not exist", path.string());
             return;
@@ -77,7 +77,7 @@ namespace Lattice {
                 continue;
             }
 
-            Plugin candidate{file.parent_path(), manifestOf(*package)};
+            PackageCandidate candidate{file.parent_path(), manifestOf(*package)};
             candidate.library = library;
             auto [it, inserted] = candidates.emplace(candidate.manifest.id, std::move(candidate));
             if (!inserted) {
@@ -89,103 +89,103 @@ namespace Lattice {
         }
     }
 
-    void PluginManager::checkCandidates() {
-        for (auto& [id, plugin] : candidates) {
+    void PackageManager::checkCandidates() {
+        for (auto& [id, package] : candidates) {
             if (canLoad(id)) {
                 prepareLoad(id);
             }
         }
     }
 
-    bool PluginManager::canLoad(const std::string& id) {
+    bool PackageManager::canLoad(const std::string& id) {
         auto it = candidates.find(id);
 
         if (it == candidates.end()) {
-            Logger::error("PluginManager", "Plugin '{}' not found", id);
+            Logger::error("PackageManager", "PackageCandidate '{}' not found", id);
             return false;
         }
 
-        Plugin& plugin = it->second;
+        PackageCandidate& package = it->second;
 
-        if (plugin.status == LoadStatus::Valid ||
-            plugin.status == LoadStatus::Loaded ||
-            plugin.status == LoadStatus::Queued) {
+        if (package.status == LoadStatus::Valid ||
+            package.status == LoadStatus::Loaded ||
+            package.status == LoadStatus::Queued) {
             return true;
         }
 
-        if (plugin.status == LoadStatus::DependencyCycle) {
-            Logger::error("PluginManager", "Circular dependency detected at '{}'", id);
+        if (package.status == LoadStatus::DependencyCycle) {
+            Logger::error("PackageManager", "Circular dependency detected at '{}'", id);
             return false;
         }
 
-        if (plugin.status != LoadStatus::NonChecked)
+        if (package.status != LoadStatus::NonChecked)
             return false;
 
-        plugin.status = LoadStatus::DependencyCycle;
+        package.status = LoadStatus::DependencyCycle;
 
-        if (plugin.manifest.kernelApi.major != kernelApi.major ||
-            plugin.manifest.kernelApi > kernelApi) {
-            plugin.status = LoadStatus::IncompatibleVersion;
-            Logger::error(tag, "Plugin '{}' needs kernel API {}, host is {}",
-                id, plugin.manifest.kernelApi.str(), kernelApi.str());
+        if (package.manifest.kernelApi.major != kernelApi.major ||
+            package.manifest.kernelApi > kernelApi) {
+            package.status = LoadStatus::IncompatibleVersion;
+            Logger::error(tag, "PackageCandidate '{}' needs kernel API {}, host is {}",
+                id, package.manifest.kernelApi.str(), kernelApi.str());
             return false;
         }
 
-        for (const auto& dep : plugin.manifest.dependencies) {
+        for (const auto& dep : package.manifest.dependencies) {
             auto it = candidates.find(dep.id);
             if (it == candidates.end()) {
-                plugin.status = LoadStatus::MissingDependency;
-                Logger::error(tag, "Missing dependency '{}' for plugin '{}'", dep.id, id);
+                package.status = LoadStatus::MissingDependency;
+                Logger::error(tag, "Missing dependency '{}' for package '{}'", dep.id, id);
                 return false;
             }
 
-            Plugin& dependency = it->second;
+            PackageCandidate& dependency = it->second;
             if (!dep.requirement.contains(dependency.manifest.version)) {
-                plugin.status = LoadStatus::IncompatibleVersion;
-                Logger::error(tag, "Plugin '{}' requires '{}' version {}, but found v{}", 
+                package.status = LoadStatus::IncompatibleVersion;
+                Logger::error(tag, "PackageCandidate '{}' requires '{}' version {}, but found v{}", 
                     id, dep.id, dep.requirement.requirement, dependency.manifest.version.str());
                 return false;
             }
 
             if (!canLoad(dep.id)) {
-                plugin.status = it->second.status;
-                Logger::error(tag, "Dependency '{}' cannot be loaded for plugin '{}'", dep.id, id);
+                package.status = it->second.status;
+                Logger::error(tag, "Dependency '{}' cannot be loaded for package '{}'", dep.id, id);
                 return false;
             }
         }
 
-        plugin.status = LoadStatus::Valid;
+        package.status = LoadStatus::Valid;
         Logger::ok(tag, "Dependency check passed: {}", id);
         return true;
     }
 
-    bool PluginManager::prepareLoad(const std::string& id) {
+    bool PackageManager::prepareLoad(const std::string& id) {
         auto it = candidates.find(id);
 
         if (it == candidates.end())
             return false;
 
-        Plugin& plugin = it->second;
+        PackageCandidate& package = it->second;
 
-        if (plugin.status == LoadStatus::Queued ||
-            plugin.status == LoadStatus::Loaded) {
+        if (package.status == LoadStatus::Queued ||
+            package.status == LoadStatus::Loaded) {
             return true;
         }
 
-        for (const auto& dep : plugin.manifest.dependencies) {
+        for (const auto& dep : package.manifest.dependencies) {
             if (!prepareLoad(dep.id))
                 return false;
         }
 
-        plugin.status = LoadStatus::Queued;
-        loadQueue.push_back(&plugin);
+        package.status = LoadStatus::Queued;
+        loadQueue.push_back(&package);
 
         return true;
     }
 
-    uint16_t PluginManager::loadCandidates() {
-        uint16_t loadedPlugins = 0; 
-        for (Plugin* candidate : loadQueue) {
+    uint16_t PackageManager::loadCandidates() {
+        uint16_t loadedPackages = 0; 
+        for (PackageCandidate* candidate : loadQueue) {
             if (candidate->status == LoadStatus::Loaded) continue;
             bool dependenciesLoaded = true;
             for (const auto& dep : candidate->manifest.dependencies) {
@@ -198,22 +198,22 @@ namespace Lattice {
                 continue;
             }
             LogScope scope(tag, "Loading '{}'", candidate->path.string());
-            if (loadPlugin(candidate)) {
-                scope.finish("Loaded plugin '{}'", candidate->manifest.id);
-                loadedPlugins++;
+            if (loadPackage(candidate)) {
+                scope.finish("Loaded package '{}'", candidate->manifest.id);
+                loadedPackages++;
             } else {
-                scope.finishError("failed to load plugin '{}'", candidate->manifest.id);
+                scope.finishError("failed to load package '{}'", candidate->manifest.id);
             }
         }
-        if (!loadedPlugins) {
-            Logger::warning(tag, "No plugins could be loaded");
+        if (!loadedPackages) {
+            Logger::warning(tag, "No packages could be loaded");
         } else {
-            Logger::info(tag, "Loaded plugins: {}", loadedPlugins);
+            Logger::info(tag, "Loaded packages: {}", loadedPackages);
         }
-        return loadedPlugins;
+        return loadedPackages;
     }
 
-    bool PluginManager::loadPlugin(Plugin* candidate) {
+    bool PackageManager::loadPackage(PackageCandidate* candidate) {
         // The library was opened while reading its metadata.
         const auto path = candidate->library ? candidate->library->path : candidate->path;
         if (!candidate->library) {
@@ -223,7 +223,7 @@ namespace Lattice {
 
         const size_t depsBefore = compileDepSink().size();
 
-        auto compose = candidate->library->symbol<PluginComposeFn>("compose");
+        auto compose = candidate->library->symbol<PackageComposeFn>("compose");
         if (!compose) {
             Logger::error(tag, "compose symbol not found in '{}'", path.string());
             candidate->status = LoadStatus::Failed;
@@ -247,7 +247,7 @@ namespace Lattice {
         }
         const auto after = blueprints.size();
 
-        PluginCatalog catalog{.pluginId = candidate->manifest.id};
+        PackageCatalog catalog{.packageId = candidate->manifest.id};
 
         const auto& sink = compileDepSink();
         catalog.deps.assign(sink.begin() + depsBefore, sink.end());
@@ -256,15 +256,15 @@ namespace Lattice {
             catalog.provided.push_back(id);
 
         if (after == before)
-            Logger::warning(tag, "Plugin '{}' does not provide anything", candidate->manifest.id);
+            Logger::warning(tag, "PackageCandidate '{}' does not provide anything", candidate->manifest.id);
 
-        recordPluginCatalog(std::move(catalog));
+        recordPackageCatalog(std::move(catalog));
 
         candidate->status = LoadStatus::Loaded;
         return true;
     }
 
-    const Plugin* PluginManager::findCandidate(std::string_view id) const {
+    const PackageCandidate* PackageManager::findCandidate(std::string_view id) const {
         auto it = candidates.find(std::string(id));
 
         if (it == candidates.end())

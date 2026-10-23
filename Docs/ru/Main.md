@@ -26,7 +26,7 @@ Lattice собирает обычные C++ объекты в дерево вл�
 | Внешнее создание и удаление веток | `Kernel/Builder.hpp`, `Builder.cpp` |
 | Зависимости потребителей от поставщиков | `Kernel/DependencyGraph.hpp`, `DependencyGraph.cpp` |
 | Остановка и фактическое уничтожение | `Kernel/NodeOps.hpp`, `NodeOps.cpp` |
-| Загрузка единственной точки входа `compose` | `Kernel/PluginManager.cpp` |
+| Загрузка единственной точки входа `compose` | `Kernel/PackageManager.cpp` |
 
 ## Основные правила
 

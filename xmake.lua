@@ -62,7 +62,7 @@ if has_config("lattice_build_extras") then
 
         add_files("tests/*.cpp")
 
-        for _, dir in ipairs(os.dirs("tests/TestPlugins/*")) do
+        for _, dir in ipairs(os.dirs("tests/TestPackages/*")) do
             includes(dir)
         end
 

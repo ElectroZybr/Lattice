@@ -5,17 +5,17 @@
 #include <vector>
 
 #include <Lattice/Kernel/DLLoader.hpp>
-#include <Lattice/Kernel/Plugin.hpp>
+#include <Lattice/Kernel/PackageCandidate.hpp>
 #include <Lattice/Kernel/Visibility.hpp>
 
 namespace Lattice {
 
-struct PluginManifest;
+struct PackageManifest;
 
-class LATTICE_API PluginManager {
-    static constexpr std::string_view tag = "PluginManager";
+class LATTICE_API PackageManager {
+    static constexpr std::string_view tag = "PackageManager";
 public:
-    PluginManager(Blueprints& blueprints, DLLoader& dlLoader)
+    PackageManager(Blueprints& blueprints, DLLoader& dlLoader)
         : blueprints(blueprints), dlLoader(dlLoader) {}
 
     uint16_t load(std::filesystem::path path);
@@ -24,16 +24,16 @@ public:
     void checkCandidates();
     uint16_t loadCandidates();
 
-    const Plugin* findCandidate(std::string_view id) const;
-    const std::vector<Plugin*>& queue() const { return loadQueue; }
+    const PackageCandidate* findCandidate(std::string_view id) const;
+    const std::vector<PackageCandidate*>& queue() const { return loadQueue; }
 
 private:
     bool canLoad(const std::string& id);
     bool prepareLoad(const std::string& id);
-    bool loadPlugin(Plugin* candidate);
+    bool loadPackage(PackageCandidate* candidate);
 
-    std::unordered_map<std::string, Plugin> candidates;
-    std::vector<Plugin*> loadQueue;
+    std::unordered_map<std::string, PackageCandidate> candidates;
+    std::vector<PackageCandidate*> loadQueue;
 
     Blueprints& blueprints;
     DLLoader& dlLoader;

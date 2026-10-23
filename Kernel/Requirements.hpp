@@ -25,19 +25,19 @@ struct CompileDep {
     DepKind kind = DepKind::Require;
 };
 
-struct PluginCatalog {
-    std::string pluginId;
+struct PackageCatalog {
+    std::string packageId;
     std::vector<CompileDep> deps;
     std::vector<BlueprintId> provided;
 };
 
 LATTICE_API std::vector<CompileDep>& compileDepSink();
-LATTICE_API std::vector<PluginCatalog>& pluginCatalogs();
+LATTICE_API std::vector<PackageCatalog>& packageCatalogs();
 LATTICE_API bool check(std::string_view name, const Blueprints& blueprints);
 LATTICE_API std::vector<std::string> uniqueList(std::string_view name, const Blueprints& blueprints);
 LATTICE_API std::vector<std::string> printUniqueList(std::string_view name, const Blueprints& blueprints);
 LATTICE_API void printCompositionTree(std::string_view name, const Blueprints& blueprints);
-LATTICE_API void recordPluginCatalog(PluginCatalog catalog);
+LATTICE_API void recordPackageCatalog(PackageCatalog catalog);
 
 inline constexpr std::string_view tag = "Requirements";
 

@@ -34,7 +34,9 @@ struct LATTICE_API ServiceAPI {
         });
     }
 
-    void enter(Lattice::NodeOps& hostOps);
+    /// Run on the calling thread. Each idle checkpoint services the runtime and asks
+    /// the service to stop once `interrupted` reports an external stop (SIGINT).
+    void enter(Lattice::NodeOps& hostOps, std::function<bool()> interrupted = {});
 
     void stop() {
         requestStop();
@@ -66,13 +68,14 @@ protected:
         stopRequested_ = true;
     }
 
-    bool stopRequested() const;
+    bool stopRequested();
 
 private:
     std::thread thread_;
     std::atomic<bool> running_{false};
     std::atomic<bool> stopRequested_{false};
     Lattice::NodeOps* hostOps_ = nullptr;
+    std::function<bool()> interrupted_;
     bool host_ = false;
 };
 
