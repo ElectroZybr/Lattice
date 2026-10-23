@@ -79,12 +79,29 @@ NodeId NodeFactory::emplace(
         throw Exception<NodeFactory>("Object '{}' already exists under node #{}", instance, parent);
 
     const NodeId id = createNode(parent, instance, type, NodeKind::Object);
+    this->construct(id, type, construct, arguments);
+    return id;
+}
+
+void NodeFactory::construct(NodeId id, BlueprintId type,
+    void (*constructor)(void*, NodeId, void*), void* arguments) {
+    const auto meta = nodeSystem_.blueprints.require(type).meta;
+    if (!meta.allocate || !meta.ops || !constructor)
+        throw Exception<NodeFactory>("Blueprint has no object storage operations");
+    {
+        auto& node = nodeSystem_.registry.require(id);
+        const bool holder = node.kind == NodeKind::Object || node.kind == NodeKind::Folder;
+        if (node.state != NodeState::Active || !holder || node.object.ptr || node.object.building)
+            throw Exception<NodeFactory>("Node #{} cannot hold another object", id);
+        // A structural branch becomes the node of its object; its children stay owned by it.
+        node.kind = NodeKind::Object;
+    }
     try {
         void* storage = meta.allocate();
         nodeSystem_.registry.require(id).object = {
             .ptr = storage, .bp = type, .building = true, .constructed = false
         };
-        construct(storage, id, arguments);
+        constructor(storage, id, arguments);
         auto& object = nodeSystem_.registry.require(id).object;
         object.constructed = true;
         object.building = false;
@@ -92,7 +109,6 @@ NodeId NodeFactory::emplace(
         nodeSystem_.ops.destroyBranch(id);
         throw;
     }
-    return id;
 }
 
 NodeId NodeFactory::folder(NodeId parent, std::string_view name) {

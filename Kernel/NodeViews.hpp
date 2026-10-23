@@ -142,6 +142,15 @@ public:
     ExportsView() = default;
     explicit ExportsView(Lattice::NodeSystem& nodeSystem) : nodeSystem_(&nodeSystem) {}
 
+    void set(const Lattice::ResolvedExport& target, const Lattice::Value& value) const {
+        nodeSystem_->exports.set(target.id, value);
+    }
+
+    // Removes an explicit edit from observers; does not restore object state.
+    void reset(const Lattice::ResolvedExport& target) const {
+        nodeSystem_->exports.reset(target.id);
+    }
+
     bool exists() const noexcept { return nodeSystem_ != nullptr; }
     explicit operator bool() const noexcept { return exists(); }
 
@@ -305,6 +314,28 @@ public:
           generation_(std::exchange(other.generation_, 0)) {}
     NodeBuild& operator=(NodeBuild&&) = delete;
 
+    /// Construct the composition's own object, retaining its package identity and children.
+    template<class T, class... APIs, class... Args>
+    Lattice::ObjectBuild<T> construct(Args&&... args) {
+        check();
+        const auto type = Lattice::detail::ensureObject<T, APIs...>(nodeSystem_.blueprints);
+        auto arguments = std::forward_as_tuple(std::forward<Args>(args)...);
+        struct Arguments {
+            Lattice::NodeSystem& runtime;
+            decltype(arguments)& values;
+        } context{nodeSystem_, arguments};
+        nodeSystem_.factory.construct(id_, type,
+            [](void* storage, Lattice::NodeId consumer, void* opaque) {
+                auto& context = *static_cast<Arguments*>(opaque);
+                std::apply([&](auto&&... values) {
+                    std::construct_at(static_cast<T*>(storage),
+                        Lattice::detail::compositionArgument(
+                            std::forward<decltype(values)>(values), context.runtime, consumer)...);
+                }, std::move(context.values));
+            }, &context);
+        return Lattice::ObjectBuild<T>{Lattice::detail::reference<T>(nodeSystem_, id_)};
+    }
+
     template<class T, class... APIs, class... Args>
     Lattice::ObjectBuild<T> emplace(std::string_view instance, Args&&... args) {
         check();
@@ -343,6 +374,23 @@ public:
         check();
         const auto node = nodeSystem_.query.require(id_, nodeSystem_.blueprints.id<T>(), instance);
         return Lattice::detail::reference<T>(nodeSystem_, node);
+    }
+
+    /// Snapshot of the nearest ancestor whose own object provides T: the object a
+    /// nested composition (a slot implementation, a viewport's controller) belongs to.
+    template<class T>
+    Ref<T> owner() const {
+        check();
+        const auto type = nodeSystem_.blueprints.find<T>();
+        if (type != Lattice::InvalidBlueprintId)
+            for (auto node = nodeSystem_.registry.require(id_).parent; node != Lattice::InvalidNodeId;
+                 node = nodeSystem_.registry.require(node).parent) {
+                const auto& current = nodeSystem_.registry.require(node);
+                if (current.kind == Lattice::NodeKind::Object && current.object.ptr &&
+                    nodeSystem_.query.resolve(node, type))
+                    return Lattice::detail::reference<T>(nodeSystem_, node);
+            }
+        throw Lattice::Exception<NodeBuild>("No owner providing '{}' above node #{}", Lattice::typeKey<T>(), id_);
     }
 
     template<class T>
@@ -782,12 +830,10 @@ void ObjectBuild<T>::service(Run run, Stop stop) {
     std::function<void()> stopService = [object, stop]() mutable { std::invoke(stop, *object); };
 
     auto* runtime = object.runtime();
-    auto runner = ::NodeBuild{object.id(), *runtime}.template emplace<ServiceRunner, ServiceAPI>(
-        "service", std::move(runService), std::move(stopService));
-    // The runner uses the object until its thread is joined.
-    runtime->dependencies.retain(runner.id(), object.id());
-    runner.onRetire([](ServiceRunner& service) { service.retire(); });
-    runner.readyToDestroy([](const ServiceRunner& service) { return service.readyToDestroy(); });
+    if (runtime->ops.service(object.id()))
+        throw Exception<ServiceRunner>("Object #{} already declares a service", object.id());
+    runtime->ops.bindService(object.id(),
+        std::make_unique<ServiceRunner>(std::move(runService), std::move(stopService)));
 }
 
 }

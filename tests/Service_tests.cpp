@@ -40,9 +40,8 @@ struct Consumer {
 
 ServiceAPI* onlyService(RuntimeFixture& fixture, NodeId branch) {
     auto& nodes = fixture.run_ctx.nodes;
-    const auto api = fixture.run_ctx.blueprints.id<ServiceAPI>();
-    const auto services = nodes.query.collect(branch, api);
-    return services.size() == 1 ? static_cast<ServiceAPI*>(nodes.query.resolve(services.front(), api)) : nullptr;
+    const auto services = nodes.ops.services(branch);
+    return services.size() == 1 ? nodes.ops.service(services.front()) : nullptr;
 }
 
 template<class F>
@@ -61,6 +60,8 @@ TEST(Service_DeclaredInCompositionRunsOrdinaryObject, RuntimeFixture,
 
     auto* service = onlyService(fixture, branch.id());
     REQUIRE(service != nullptr);
+    REQUIRE(fixture.run_ctx.nodes.registry.children(worker.id()).empty());
+    REQUIRE(fixture.run_ctx.nodes.ops.services(branch.id()).front() == worker.id());
     service->start();
     REQUIRE(eventually([&] { return worker->steps > 0; }));
     service->stop();
@@ -147,6 +148,50 @@ TEST(Service_RollbackStopsServiceThatNeverStarted, RuntimeFixture,
     REQUIRE(failed);
     REQUIRE(Worker::destroyed == 1);
     REQUIRE(nodes.registry.children(fixture.root).empty());
+}
+
+TEST(Service_HostRetiresItsOwnObjectAfterRunReturns, RuntimeFixture) {
+    auto& nodes = fixture.run_ctx.nodes;
+    auto worker = fixture.build(fixture.root).emplace<Worker>("host");
+    const auto id = worker.id();
+    bool aliveDuringRun = false;
+    worker.service([&](Worker&, const std::function<void()>& idle) {
+        nodes.ops.retireBranch(id);
+        idle();
+        aliveDuringRun = nodes.registry.get(id) && nodes.ops.service(id)->running();
+    }, &Worker::requestStop);
+    nodes.ops.service(id)->enter(nodes.ops);
+    REQUIRE(aliveDuringRun);
+    nodes.ops.maintain();
+    REQUIRE(!nodes.registry.get(id));
+}
+
+TEST(Service_RejectsDuplicateWithoutStoppingExistingObject, RuntimeFixture) {
+    auto worker = fixture.build(fixture.root).emplace<Worker>("worker");
+    worker.service(&Worker::run, &Worker::requestStop);
+    bool rejected = false;
+    try { worker.service(&Worker::run, &Worker::requestStop); }
+    catch (const ExceptionBase&) { rejected = true; }
+    REQUIRE(rejected);
+    REQUIRE(!worker->stop);
+    REQUIRE(fixture.run_ctx.nodes.registry.children(worker.id()).empty());
+}
+
+TEST(Service_PreservesObjectLifecycleHooks, RuntimeFixture) {
+    auto& nodes = fixture.run_ctx.nodes;
+    auto worker = fixture.build(fixture.root).emplace<Worker>("worker");
+    const auto id = worker.id();
+    bool retired = false, ready = false;
+    worker.onRetire([&](Worker&) { retired = true; });
+    worker.readyToDestroy([&](const Worker&) { return ready; });
+    worker.service(&Worker::run, &Worker::requestStop);
+    nodes.ops.retireBranch(id);
+    nodes.ops.maintain();
+    REQUIRE(retired && worker->stop);
+    REQUIRE(nodes.registry.get(id));
+    ready = true;
+    nodes.ops.maintain();
+    REQUIRE(!nodes.registry.get(id));
 }
 
 }

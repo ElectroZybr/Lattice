@@ -123,7 +123,10 @@ struct Export {
     ExportKind kind = ExportKind::Param;
 };
 
+enum class ParamChange : uint8_t { Set, Reset, Remove };
+
 struct ResolvedExport {
+    ExportId id = InvalidExportId;
     void* object = nullptr;
     Value (*get)(const void*) = nullptr;
     void (*set)(void*, const Value&) = nullptr;
@@ -151,8 +154,38 @@ class Exports {
     std::vector<Action> actions_;
 
     std::unordered_map<ExportKey, ExportId, ExportKeyHash> index_;
+    std::unordered_map<uint64_t, std::function<void(ExportId, ParamChange)>> observers_;
+    uint64_t nextObserver_ = 1;
+
+    void notify(ExportId id, ParamChange change) {
+        std::vector<uint64_t> listeners;
+        for (const auto& [token, callback] : observers_) listeners.push_back(token);
+        for (auto token : listeners) {
+            const auto found = observers_.find(token);
+            if (found == observers_.end()) continue;
+            auto callback = found->second;
+            callback(id, change);
+        }
+    }
 
 public:
+    // Observe explicit parameter edits; direct C++ field writes and resolved raw
+    // setters (e.g. transient input routing) do not emit these events.
+    uint64_t observeParameters(std::function<void(ExportId, ParamChange)> callback) {
+        const auto token = nextObserver_++;
+        observers_.emplace(token, std::move(callback));
+        return token;
+    }
+
+    void unobserveParameters(uint64_t token) { observers_.erase(token); }
+
+    void reset(ExportId id) {
+        if (id >= exports_.size() || exports_[id].owner == InvalidNodeId ||
+            exports_[id].kind != ExportKind::Param || !params_[id].set)
+            throw Exception<Exports>("Export #{} is not writable", id);
+        notify(id, ParamChange::Reset);
+    }
+
     template<typename T>
     ExportId param(NodeId owner, std::string_view name, T& value) {
         const ExportKey key{owner, std::string(name)};
@@ -277,6 +310,7 @@ public:
             throw Exception<Exports>("Export #{} is not writable", id);
 
         params_[id].set(params_[id].object, value);
+        notify(id, ParamChange::Set);
     }
 
     template<typename T>
@@ -306,6 +340,7 @@ public:
         if (entry.kind == ExportKind::Param) {
             auto& param = params_[id];
             return {
+                .id = id,
                 .object = param.object,
                 .get = param.get,
                 .set = param.set
@@ -315,6 +350,7 @@ public:
         auto& action = actions_[id];
 
         return {
+            .id = id,
             .object = &action,
             .invoke = [](void* object, ActionContext& context, std::span<const Value> arguments) {
                 static_cast<Action*>(object)->invoke(context, arguments);
@@ -333,9 +369,11 @@ public:
             if (exports_[id].owner != owner)
                 continue;
 
+            const bool parameter = exports_[id].kind == ExportKind::Param;
             exports_[id].owner = InvalidNodeId;
             params_[id] = {};
             actions_[id] = {};
+            if (parameter) notify(id, ParamChange::Remove);
         }
     }
 

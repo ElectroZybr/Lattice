@@ -18,7 +18,6 @@ struct RuntimeFixture : public Fixture {
     ~RuntimeFixture() override { run_ctx.nodes.ops.destroyBranch(root); }
 
     RuntimeFixture() : pluginManager(run_ctx.blueprints, dlLoader) {
-        detail::ensureObject<ServiceAPI>(run_ctx.blueprints);
         root = run_ctx.nodes.factory.folder(InvalidNodeId, "Root");
     }
 

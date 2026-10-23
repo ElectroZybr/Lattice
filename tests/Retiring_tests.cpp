@@ -120,8 +120,7 @@ TEST(Retiring_HostServiceCollectsAtCheckpoint, RuntimeFixture,
     nodes.ops.retireBranch(victim);
     REQUIRE(nodes.registry.get(victim) != nullptr);
 
-    const auto api = nodes.blueprints.id<ServiceAPI>();
-    auto* service = static_cast<ServiceAPI*>(nodes.query.resolve(nodes.query.collect(loop.id(), api).front(), api));
+    auto* service = nodes.ops.service(loop.id());
     REQUIRE(service != nullptr);
     service->enter(nodes.ops);
 

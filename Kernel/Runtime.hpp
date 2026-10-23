@@ -46,8 +46,6 @@ class Runtime {
     
 public:
     Runtime() : pluginManager(run_ctx.blueprints, dlLoader) {
-        // ядро ищет сервисы веток по этому API
-        detail::ensureObject<ServiceAPI>(run_ctx.blueprints);
         root = run_ctx.nodes.factory.folder(InvalidNodeId, "Root");
 
         ::NodeBuild node{root, run_ctx.nodes};
@@ -152,11 +150,15 @@ public:
     }
 
     void stop(std::string_view instanceName) {
-        const BlueprintId api = run_ctx.blueprints.id<ServiceAPI>();
-        const NodeId id = run_ctx.nodes.query.find(root, api, instanceName);
-        auto* service = id == InvalidNodeId
-            ? nullptr
-            : static_cast<ServiceAPI*>(run_ctx.nodes.query.resolve(id, api));
+        NodeId id = InvalidNodeId;
+        for (auto candidate : run_ctx.nodes.ops.services(root)) {
+            if (run_ctx.nodes.registry.require(candidate).name != instanceName) continue;
+            if (id != InvalidNodeId)
+                throw Exception<Runtime>("Ambiguous service '{}': '{}' and '{}'", instanceName,
+                    run_ctx.nodes.ops.stringPath(id), run_ctx.nodes.ops.stringPath(candidate));
+            id = candidate;
+        }
+        auto* service = id == InvalidNodeId ? nullptr : resolveService(id);
 
         if (!service)
             return;
@@ -199,16 +201,13 @@ public:
 
 private:
     ServiceAPI* resolveService(NodeId id) {
-        return static_cast<ServiceAPI*>(
-            run_ctx.nodes.query.resolve(id, run_ctx.blueprints.id<ServiceAPI>())
-        );
+        return run_ctx.nodes.ops.service(id);
     }
 
     // A startup branch has at most one service: its root object or one declared
     // with ObjectBuild::service anywhere in the branch. Several are ambiguous.
     ServiceAPI* branchService(NodeId branch) {
-        const BlueprintId api = run_ctx.blueprints.id<ServiceAPI>();
-        const auto services = run_ctx.nodes.query.collect(branch, api);
+        const auto services = run_ctx.nodes.ops.services(branch);
         if (services.empty())
             return nullptr;
         if (services.size() > 1) {
@@ -351,10 +350,7 @@ private:
     void stopAll() {
         running = false;
 
-        auto services = run_ctx.nodes.query.collect(
-            root,
-            run_ctx.blueprints.id<ServiceAPI>()
-        );
+        auto services = run_ctx.nodes.ops.services(root);
 
         for (auto it = services.rbegin(); it != services.rend(); ++it)
             if (auto* service = resolveService(*it))

@@ -84,11 +84,12 @@ TreeNodeInfo TreeView::info(NodeId id) const {
         .kind = node.kind,
         .state = node.state,
         .name = node.name,
-        .hasObject = node.object.ptr != nullptr
+        .hasObject = node.object.ptr != nullptr,
+        .service = nodes_->ops.service(id) != nullptr
     };
 
-    if (node.bp != InvalidBlueprintId)
-        result.type = nodes_->blueprints.require(node.bp).shortName();
+    if (node.type() != InvalidBlueprintId)
+        result.type = nodes_->blueprints.require(node.type()).shortName();
     if (node.object.bp != InvalidBlueprintId)
         result.implementation = nodes_->blueprints.require(node.object.bp).shortName();
 
@@ -104,10 +105,10 @@ std::string TreeView::label(NodeId id) const {
         return {};
 
     const auto& node = nodes_->registry.require(id);
-    if (node.bp == InvalidBlueprintId)
+    if (node.type() == InvalidBlueprintId)
         return node.name;
 
-    const std::string_view type = nodes_->blueprints.require(node.bp).shortName();
+    const std::string_view type = nodes_->blueprints.require(node.type()).shortName();
     return node.name.empty() ? std::string(type) : std::format("{}:{}", type, node.name);
 }
 

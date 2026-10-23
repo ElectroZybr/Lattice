@@ -13,6 +13,27 @@
 
 namespace Lattice {
 
+void NodeOps::bindService(NodeId id, std::unique_ptr<ServiceRunner> execution) {
+    const auto& node = nodeSystem_.registry.require(id);
+    if (node.state != NodeState::Active || !node.object.constructed)
+        throw Exception<NodeOps>("Service requires an active constructed object");
+    if (lifecycle_.size() <= id) lifecycle_.resize(id + 1);
+    if (lifecycle_[id].service)
+        throw Exception<NodeOps>("Object #{} already declares a service", id);
+    lifecycle_[id].service = std::move(execution);
+}
+
+ServiceRunner* NodeOps::service(NodeId id) const {
+    return id < lifecycle_.size() ? lifecycle_[id].service.get() : nullptr;
+}
+
+std::vector<NodeId> NodeOps::services(NodeId root) const {
+    auto nodes = collectTree(root);
+    nodes.insert(nodes.begin(), root);
+    std::erase_if(nodes, [this](NodeId id) { return !service(id); });
+    return nodes;
+}
+
 void NodeOps::onRetire(NodeId id, std::function<void(void*)> callback) {
     const auto& node = nodeSystem_.registry.require(id);
     if (node.state != NodeState::Active || !node.object.constructed)
@@ -42,6 +63,7 @@ void NodeOps::beginRetire(NodeId id) {
     lifecycle_[id].retireCalled = true;
     // Copy callbacks before invoking user code, which can grow registry storage.
     const auto callback = lifecycle_[id].retire;
+    if (auto* execution = service(id)) execution->retire();
     if (callback)
         callback(object.ptr);
 }
@@ -50,6 +72,7 @@ bool NodeOps::isReadyToDestroy(NodeId id) const {
     const auto* node = nodeSystem_.registry.get(id);
     if (!node || !node->object.ptr || !node->object.constructed)
         return true;
+    if (auto* execution = service(id); execution && !execution->readyToDestroy()) return false;
     const auto callback = id < lifecycle_.size() ? lifecycle_[id].ready : nullptr;
     return !callback || callback(node->object.ptr);
 }
@@ -225,8 +248,12 @@ size_t NodeOps::collectRetired() {
         retiring_.erase(retiring_.begin() + static_cast<std::ptrdiff_t>(index));
         ++collected;
 
-        for (NodeId nodeId : nodes | std::views::reverse) {
+        // Let owners stop and destroy their objects while owned dependencies live.
+        for (NodeId nodeId : nodes) {
             if (!nodeSystem_.registry.get(nodeId))
+                continue;
+            const auto parent = nodeSystem_.registry.require(nodeId).parent;
+            if (std::ranges::find(nodes, parent) != nodes.end())
                 continue;
             destroyBranch(nodeId);
         }
@@ -276,31 +303,35 @@ void NodeOps::destroyBranch(NodeId id) {
 
 void NodeOps::clearContents(NodeId id) {
     beginRetire(id);
-    if (id < lifecycle_.size() && lifecycle_[id].ready)
+    if (service(id) || (id < lifecycle_.size() && lifecycle_[id].ready))
         while (!isReadyToDestroy(id))
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
+    if (id < lifecycle_.size()) {
+        auto execution = std::move(lifecycle_[id].service);
+        execution.reset(); // Join while the object and its dependencies still exist.
+    }
+
     const auto children = std::vector<NodeId>(nodeSystem_.registry.children(id).begin(), nodeSystem_.registry.children(id).end());
 
-    for (NodeId child : children | std::views::reverse)
-        if (nodeSystem_.registry.get(child))
-            destroyBranch(child);
+    const auto object = nodeSystem_.registry.require(id).object;
 
-    auto& node = nodeSystem_.registry.require(id);
+    if (object.ptr) {
+        const auto ops = nodeSystem_.blueprints.require(object.bp).meta.ops;
 
-    if (node.object.ptr) {
-        const auto& bp = nodeSystem_.blueprints.require(node.object.bp);
-
-        if (bp.meta.ops) {
-            if (node.object.constructed && bp.meta.ops->destroy)
-                bp.meta.ops->destroy(node.object.ptr);
-            else if (!node.object.constructed && bp.meta.ops->deallocate)
-                bp.meta.ops->deallocate(node.object.ptr);
+        if (ops) {
+            if (object.constructed && ops->destroy)
+                ops->destroy(object.ptr);
+            else if (!object.constructed && ops->deallocate)
+                ops->deallocate(object.ptr);
         }
 
         nodeSystem_.registry.require(id).object = {};
     }
     nodeSystem_.registry.require(id).object = {};
+    for (NodeId child : children | std::views::reverse)
+        if (nodeSystem_.registry.get(child))
+            destroyBranch(child);
     if (nodeSystem_.registry.require(id).kind == NodeKind::Slot)
         nodeSystem_.registry.require(id).relation = InvalidNodeId;
     if (id < lifecycle_.size())
@@ -323,12 +354,12 @@ std::string NodeOps::stringPath(NodeId id) const {
         if (!result.empty())
             result += '/';
 
-        if (node.bp == InvalidBlueprintId) {
+        if (node.type() == InvalidBlueprintId) {
             result += node.name;
             continue;
         }
 
-        const auto name = nodeSystem_.blueprints.require(node.bp).shortName();
+        const auto name = nodeSystem_.blueprints.require(node.type()).shortName();
 
         if (node.name.empty())
             result += name;
@@ -354,7 +385,7 @@ void NodeOps::dumpTree(NodeId id, NodeId highlighted) const {
                     break;
 
                 case NodeKind::Object: {
-                    const auto type = nodeSystem_.blueprints.require(child.bp).shortName();
+                    const auto type = nodeSystem_.blueprints.require(child.type()).shortName();
                     line = child.name.empty()
                         ? std::format("{} <ok>C</>", type)
                         : std::format("{}<mut2>::{}</> <ok>C</>", type, child.name);
@@ -379,6 +410,7 @@ void NodeOps::dumpTree(NodeId id, NodeId highlighted) const {
 
             }
 
+            if (service(childId)) line += " <a2>[service]</>";
             if (childId == highlighted)
                 line = std::format("<err>{} 🡸</>", line);
 

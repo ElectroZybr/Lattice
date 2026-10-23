@@ -38,9 +38,10 @@ struct LATTICE_API ServiceAPI {
 
     void stop() {
         requestStop();
-        if (thread_.joinable())
+        if (thread_.joinable()) {
             thread_.join();
-        running_ = false;
+            running_ = false;
+        }
     }
 
     bool running() const { return running_.load(); }
@@ -79,7 +80,8 @@ private:
 namespace Lattice {
 
 /**
- * Runs an ordinary object as a service declared by composition (ObjectBuild::service).
+ * Execution state attached to an object's lifecycle by ObjectBuild::service.
+ * It is not registered as a blueprint, runtime API or a separate tree node.
  *
  * The object does not inherit ServiceAPI. `run` receives an idle callback that the
  * object may call periodically; for a host service it services the runtime

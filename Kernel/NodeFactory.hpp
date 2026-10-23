@@ -29,6 +29,9 @@ public:
     NodeId emplace(NodeId parent, BlueprintId type, std::string_view instance,
                    void (*construct)(void*, NodeId, void*), void* arguments);
 
+    void construct(NodeId id, BlueprintId type,
+                   void (*constructor)(void*, NodeId, void*), void* arguments);
+
     NodeId folder(NodeId parent, std::string_view name);
 
     void* resolve(NodeId id, BlueprintId api) const;

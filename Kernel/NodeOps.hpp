@@ -1,12 +1,14 @@
 #pragma once
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include <Lattice/Kernel/Consts.hpp>
 #include <Lattice/Kernel/Visibility.hpp>
+#include <Lattice/Kernel/ServiceAPI.hpp>
 
 namespace Lattice {
 
@@ -21,6 +23,9 @@ public:
 
     void onRetire(NodeId id, std::function<void(void*)> callback);
     void readyToDestroy(NodeId id, std::function<bool(const void*)> callback);
+    void bindService(NodeId id, std::unique_ptr<ServiceRunner> service);
+    ServiceRunner* service(NodeId id) const;
+    std::vector<NodeId> services(NodeId root) const;
     void maintain();
     void retireBranch(NodeId id);
     size_t collectRetired();
@@ -43,6 +48,7 @@ private:
     struct Lifecycle {
         std::function<void(void*)> retire;
         std::function<bool(const void*)> ready;
+        std::unique_ptr<ServiceRunner> service;
         bool retireCalled = false;
     };
     void beginRetire(NodeId id);

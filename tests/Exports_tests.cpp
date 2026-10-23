@@ -205,4 +205,31 @@ TEST(Exports_GlobalAliasSharesExport, RuntimeFixture,
     REQUIRE(invoked == 2);
 }
 
+TEST(Exports_ExplicitEditsAndRawWrites, RuntimeFixture) {
+    auto& exports = fixture.run_ctx.nodes.exports;
+    int value = 1;
+    const auto id = fixture.build(fixture.root).param("edit", value);
+    std::vector<ParamChange> changes;
+    const auto observer = exports.observeParameters([&](ExportId changed, ParamChange change) {
+        REQUIRE(changed == id);
+        changes.push_back(change);
+    });
+    auto resolved = exports.resolve(id);
+    resolved.set(resolved.object, Value{int64_t(2)});
+    REQUIRE(changes.empty());
+    try { exports.set(id, Value{"invalid"}); } catch (const std::exception&) {}
+    REQUIRE(value == 2 && changes.empty());
+    exports.set(id, Value{int64_t(3)});
+    REQUIRE(value == 3);
+    REQUIRE(changes.size() == 1 && changes.back() == ParamChange::Set);
+    exports.reset(id);
+    REQUIRE(value == 3 && changes.back() == ParamChange::Reset);
+    exports.remove(fixture.root);
+    REQUIRE(changes.back() == ParamChange::Remove);
+    exports.unobserveParameters(observer);
+    const auto other = fixture.build(fixture.root).param("other", value);
+    exports.set(other, Value{int64_t(4)});
+    REQUIRE(changes.size() == 3);
+}
+
 }

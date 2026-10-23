@@ -27,6 +27,9 @@ struct Node {
     NodeKind kind = NodeKind::Folder;
     NodeState state = NodeState::Active;
     RuntimeObject object;
+
+    /// Declared type, or the object's type for a branch that became an object node.
+    BlueprintId type() const noexcept { return bp != InvalidBlueprintId ? bp : object.bp; }
 };
 
 struct NodeKey {

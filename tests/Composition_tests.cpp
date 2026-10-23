@@ -481,3 +481,119 @@ TEST(Composition_ObjectActionsReceiveContextAndCanBeGlobal, RuntimeFixture) {
 }
 
 }
+
+namespace Lattice {
+namespace {
+void composeRootObject(NodeBuild root) {
+    auto storage = root.emplace<Storage>("storage");
+    auto algorithm = root.construct<Algorithm>(storage, std::make_unique<int>(42));
+    algorithm.param("value", *algorithm->value);
+}
+void composeRootFailure(NodeBuild root) {
+    root.emplace<Storage>("storage");
+    root.construct<Throws>(1);
+}
+}
+TEST(Composition_ObjectAtRoot, RuntimeFixture) {
+    events.clear();
+    auto& nodes = fixture.run_ctx.nodes;
+    const auto type = fixture.run_ctx.blueprints.addComposition("RootObject", composeRootObject);
+    const auto id = nodes.builder.add(fixture.root, type);
+    REQUIRE(nodes.registry.require(id).bp == type);
+    const auto object = detail::reference<Algorithm>(nodes, id);
+    REQUIRE(object.get() != nullptr);
+    REQUIRE(*object->value == 42);
+    REQUIRE(nodes.registry.children(id).size() == 1);
+    REQUIRE(nodes.dependencies.retained(id, nodes.registry.children(id).front()));
+    bool rejected = false;
+    try { fixture.build(id).construct<Storage>(); }
+    catch (const ExceptionBase&) { rejected = true; }
+    REQUIRE(rejected);
+    REQUIRE(detail::reference<Algorithm>(nodes, id).get() == object.get());
+    nodes.ops.destroyBranch(id);
+    REQUIRE((events == std::vector<int>{1, 2, -2, -1}));
+}
+TEST(Composition_ObjectAtRootRollback, RuntimeFixture) {
+    events.clear();
+    auto& nodes = fixture.run_ctx.nodes;
+    const auto type = fixture.run_ctx.blueprints.addComposition("RootFailure", composeRootFailure);
+    bool failed = false;
+    try { nodes.builder.add(fixture.root, type); }
+    catch (const std::runtime_error&) { failed = true; }
+    REQUIRE(failed);
+    REQUIRE(nodes.registry.children(fixture.root).empty());
+    REQUIRE((events == std::vector<int>{1, -1}));
+}
+}
+
+namespace Lattice {
+TEST(Composition_RootRetiresWithOwnedDependency, RuntimeFixture) {
+    events.clear();
+    auto& nodes = fixture.run_ctx.nodes;
+    const auto type = fixture.run_ctx.blueprints.addComposition("RootRetirement", composeRootObject);
+    const auto id = nodes.builder.add(fixture.root, type);
+    const auto child = nodes.registry.children(id).front();
+    nodes.ops.retireBranch(child);
+    nodes.ops.maintain();
+    REQUIRE(nodes.registry.get(id) == nullptr);
+    REQUIRE((events == std::vector<int>{1, 2, -2, -1}));
+}
+}
+
+namespace Lattice {
+namespace {
+struct ViewCamera { int id = 0; };
+struct ViewAPI { virtual ~ViewAPI() = default; virtual int camera() const = 0; };
+struct View : ViewAPI {
+    explicit View(ViewCamera& camera) : camera_(camera) {}
+    int camera() const override { return camera_.id; }
+    ViewCamera& camera_;
+};
+struct ViewController {
+    explicit ViewController(ViewAPI& view) : view(view) {}
+    ViewAPI& view;
+};
+ObjectBuild<ViewController> composeController(::NodeBuild& slot) {
+    return slot.emplace<ViewController>("controller", slot.owner<ViewAPI>());
+}
+}
+
+TEST(Composition_BranchBecomesObjectNodeAfterChildren, RuntimeFixture,
+    "construct на ветке делает её узлом объекта; дети, созданные раньше, остаются его детьми.") {
+    auto& nodes = fixture.run_ctx.nodes;
+    auto root = fixture.build(fixture.root);
+    auto addView = [&](std::string_view name, int id) {
+        auto branch = root.branch(name);
+        auto camera = branch.emplace<ViewCamera>("camera");
+        camera->id = id;
+        auto view = branch.construct<View, ViewAPI>(camera);
+        auto controller = branch.addSlot<ViewController>("controls");
+        controller.choice("Test::Controller", composeController);
+        REQUIRE(&controller->view == static_cast<ViewAPI*>(view.get()));
+        return view.id();
+    };
+    const NodeId first = addView("first", 1);
+    const NodeId second = addView("second", 2);
+
+    REQUIRE(nodes.registry.require(first).kind == NodeKind::Object);
+    REQUIRE(root.tree().label(first) == "View:first");
+    REQUIRE(root.collect<ViewAPI>().size() == 2);
+    REQUIRE(root.require<ViewAPI>("second")->camera() == 2);
+
+    nodes.ops.retireBranch(first);
+    nodes.ops.maintain();
+    REQUIRE(nodes.registry.get(first) == nullptr);
+    REQUIRE(root.collect<ViewController>().size() == 1);
+    REQUIRE(nodes.registry.get(second) != nullptr);
+}
+
+TEST(Composition_OwnerRequiresAnObjectAbove, RuntimeFixture) {
+    auto root = fixture.build(fixture.root);
+    auto branch = root.branch("plain");
+    root.emplace<View, ViewAPI>("sibling", root.emplace<ViewCamera>("camera"));
+    bool thrown = false;
+    try { branch.owner<ViewAPI>(); }
+    catch (const ExceptionBase&) { thrown = true; }
+    REQUIRE(thrown);
+}
+}
