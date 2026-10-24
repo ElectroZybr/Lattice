@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <BmRunner/BenchTypes.hpp>
+#include <BmRunner/BigO.hpp>
 #include <BmRunner/Visibility.hpp>
 
 
@@ -35,7 +36,9 @@ constexpr ValueRef valueRef(ValueRef ref) noexcept {
 
 enum class AnalysisType : uint8_t {
     Growth,
-    Correlation
+    Correlation,
+    Affine,   // y = fixed + per·x: задержка и цена на элемент (относительные МНК)
+    Phases    // Affine для каждой фазы Phases по x (раскрывается при run)
 };
 
 struct AnalysisRequest {
@@ -67,12 +70,45 @@ struct AnalysisResult {
     }
 };
 
+/// Режим сравнения исполнителей: данные уже у исполнителя (горячий кеш на CPU) или
+/// полная цена с переносом (холодный кеш). Сравниваются только бенчи одного режима.
+enum class Mode : uint8_t {
+    Default,
+    Resident,
+    Offload
+};
+
+constexpr std::string_view modeName(Mode mode) noexcept {
+    switch (mode) {
+        case Mode::Default:  return "";
+        case Mode::Resident: return "resident";
+        case Mode::Offload:  return "offload";
+    }
+    return "";
+}
+
 struct BenchResult {
     std::string_view name;
     std::string_view group;
     std::vector<PointResult> points;
     std::vector<AnalysisResult> analysis;
+
+    // Идентичность для сравнения исполнителей: одна работа (work) на разных executor.
+    // Копии: результат живёт дольше бенча.
+    std::string executor;
+    std::string work;
+    Mode mode = Mode::Default;
 };
+
+/// Подгонка y = fixed + per·x по точкам (относительные МНК: вес 1/y²).
+struct AffineFit {
+    double fixed = 0;
+    double per = 0;
+    double error = 0;   // RMS относительной ошибки
+    bool valid = false;
+};
+
+BMRUNNER_API AffineFit fitAffine(std::span<const ComplexityPoint> points);
 
 class BMRUNNER_API Analysis {
     std::vector<AnalysisRequest> requests_;
@@ -84,6 +120,33 @@ public:
             .type = AnalysisType::Growth,
             .x = valueRef(x),
             .y = valueRef(y)
+        });
+
+        return *this;
+    }
+
+    /// Задержка и цена на элемент: y = fixed + per·x.
+    template<typename X, typename Y>
+    Analysis& affine(X x, Y y) {
+        requests_.push_back({
+            .type = AnalysisType::Affine,
+            .x = valueRef(x),
+            .y = valueRef(y)
+        });
+
+        return *this;
+    }
+
+    /// Affine для каждой фазы (capability Phases) по x.
+    template<typename X>
+    Analysis& phases(X x) {
+        for (const AnalysisRequest& request : requests_)
+            if (request.type == AnalysisType::Phases)
+                return *this;
+        requests_.push_back({
+            .type = AnalysisType::Phases,
+            .x = valueRef(x),
+            .y = {.source = ValueSource::Metric, .capability = "Phases"}
         });
 
         return *this;
@@ -110,6 +173,10 @@ private:
         ValueRef ref
     );
     static std::vector<AnalysisValue> analyzeGrowth(
+        std::span<const PointResult> points,
+        const AnalysisRequest& request
+    );
+    static std::vector<AnalysisValue> analyzeAffine(
         std::span<const PointResult> points,
         const AnalysisRequest& request
     );

@@ -112,8 +112,33 @@ struct PointResult {
 // результат полностью завершенного бенчмарка
 struct BenchResult;
 
+/// Одна работа на одном исполнителе: подгонка полного времени t(N) = fixed + per·N.
+struct ExecutorFit {
+    std::string executor;
+    double fixed = 0;   // нс: задержка, не зависящая от N
+    double per = 0;     // нс на элемент
+    double error = 0;   // относительная ошибка подгонки
+};
+
+/// Начиная с n исполнитель `faster` выигрывает у `slower` (у него меньше цена на элемент).
+struct Crossover {
+    std::string faster;
+    std::string slower;
+    double n = 0;
+};
+
+/// Сравнение одной работы на разных исполнителях (один режим).
+struct Comparison {
+    std::string group;
+    std::string work;
+    std::string mode;
+    std::vector<ExecutorFit> executors;
+    std::vector<Crossover> crossovers;
+};
+
 using SampleCallback = std::function<void(const SampleResult&)>;
 using ResultCallback = std::function<void(const PointResult&)>;
 using CompleteCallback = std::function<void(const BenchResult&)>;
+using ComparisonCallback = std::function<void(const Comparison&)>;
 
 }

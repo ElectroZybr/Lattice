@@ -383,6 +383,10 @@ inline TextFormatter analysisLine(
         case AnalysisType::Correlation:
             expression = std::format("corr({}, {})", x.name, y.name);
             break;
+        case AnalysisType::Affine:
+        case AnalysisType::Phases:
+            expression = std::format("{}({})", y.name, x.name);
+            break;
     }
 
     TextFormatter output = TextFormatter::format(
@@ -411,6 +415,33 @@ inline TextFormatter analysisLine(
     }
 
     return output;
+}
+
+inline void comparison(const Comparison& comparison) {
+    const std::string title = comparison.mode.empty()
+        ? fullName(comparison.group, comparison.work)
+        : std::format("{} [{}]", fullName(comparison.group, comparison.work), comparison.mode);
+    Logger::message(TextFormatter::format("<a2><b>{:<10}<//> <light><b>{}<//>", "Compare", title));
+
+    for (const ExecutorFit& fit : comparison.executors)
+        Logger::message(TextFormatter::format(
+            "  <a>{:<10}</> <mut>fixed</>=<light>{:<12}</> <mut>per</>=<light>{:<12}</> <mut>error</>=<light>{:.2f}%</>",
+            fit.executor,
+            formatValue(fit.fixed, Unit::Nanoseconds),
+            formatValue(fit.per, Unit::Nanoseconds),
+            fit.error * 100.0));
+
+    for (const Crossover& crossover : comparison.crossovers) {
+        if (crossover.n <= 0.0)
+            Logger::message(TextFormatter::format(
+                "  <light>{}</> <mut>faster than</> <light>{}</> <mut>at every N</>", crossover.faster, crossover.slower));
+        else
+            Logger::message(TextFormatter::format(
+                "  <light>{}</> <mut>faster than</> <light>{}</> <mut>from N ≈</> <light>{}</>",
+                crossover.faster, crossover.slower, formatCompactCount(crossover.n)));
+    }
+
+    Logger::blank();
 }
 
 inline void complete(const BenchResult& result) {

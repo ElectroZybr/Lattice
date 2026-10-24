@@ -14,6 +14,7 @@
 #include <BmRunner/Analysis.hpp>
 #include <BmRunner/Stages.hpp>
 #include <BmRunner/Metrics.hpp>
+#include <BmRunner/Trace.hpp>
 #include <Lattice/Tools/Exception.hpp>
 #include <Lattice/Tools/Fixture.hpp>
 
@@ -46,6 +47,10 @@ private:
     std::string name_;
 
     Fixture::Factory createFixture_;
+    Trace trace_;
+    std::string executor_;
+    std::string work_;
+    Mode mode_ = Mode::Default;
     const SampleCallback& sample_;
     const ResultCallback& result_;
     const CompleteCallback& complete_;
@@ -83,6 +88,24 @@ public:
         return name_;
     }
 
+    /// Исполнитель работы (`cpu`, `gpu`, `remote`, …): бенчи одной работы на разных
+    /// исполнителях сводятся в таблицу сравнения с порогом N*.
+    Bench& executor(std::string_view value) {
+        executor_ = value;
+        return *this;
+    }
+
+    /// Имя работы для сравнения; по умолчанию — имя бенча.
+    Bench& work(std::string_view value) {
+        work_ = value;
+        return *this;
+    }
+
+    Bench& mode(Mode value) noexcept {
+        mode_ = value;
+        return *this;
+    }
+
     template<typename FixtureType, typename Function>
     void measure(Function&& function) {
         if (config.samples == 0)
@@ -94,10 +117,23 @@ public:
         std::vector<PointResult> points;
         points.reserve(config.sizes.size());
 
+        // Функция бенча может принимать Trace вторым аргументом — разметку фаз.
+        constexpr bool traced = std::is_invocable_v<Function&, FixtureType&, Trace&>;
+        if constexpr (traced)
+            addPhases();
+
         auto invoke = [&](Fixture& fixture) {
             auto& typed = static_cast<FixtureType&>(fixture);
 
-            if constexpr (std::is_void_v<std::invoke_result_t<Function&, FixtureType&>>) {
+            if constexpr (traced) {
+                using Result = std::invoke_result_t<Function&, FixtureType&, Trace&>;
+                if constexpr (std::is_void_v<Result>) {
+                    std::invoke(function, typed, trace_);
+                } else {
+                    auto value = std::invoke(function, typed, trace_);
+                    doNotOptimize(value);
+                }
+            } else if constexpr (std::is_void_v<std::invoke_result_t<Function&, FixtureType&>>) {
                 std::invoke(function, typed);
             } else {
                 auto value = std::invoke(function, typed);
@@ -119,12 +155,31 @@ public:
                 .name = name_,
                 .group = group_,
                 .points = points,
-                .analysis = analysis.run(points)
+                .analysis = analysis.run(points),
+                .executor = executor_,
+                .work = work_.empty() ? name_ : work_,
+                .mode = mode_
             });
         }
     }
 
 private:
+    /// Phases — в стадию с Time (там же стена итерации), если её ещё нет ни в одной стадии.
+    void addPhases() {
+        analysis.phases(N);
+        for (auto& stage : stages.data())
+            for (auto& capability : stage.capabilities)
+                if (capability->name() == Phases::capabilityName())
+                    return;
+        for (auto& stage : stages.data())
+            for (auto& capability : stage.capabilities)
+                if (capability->name() == Time::capabilityName()) {
+                    stage.capabilities.push_back(std::make_unique<Phases>());
+                    return;
+                }
+        stages.add<Time, Phases>().samples(config.samples);
+    }
+
     template<typename T>
     static void doNotOptimize(const T& value) {
     #if defined(__GNUC__) || defined(__clang__)
@@ -205,6 +260,9 @@ private:
         if (!stage.sampleLimit && stage.timeLimit == Clock::duration::zero())
             throw Exception<Bench>("Stage '{}' has no execution limit", stageName(stage));
 
+        for (auto& capability : stage.capabilities)
+            capability->bind(trace_);
+
         const std::string name = stageName(stage);
         StageResult stageResult{
             .name = name,
@@ -235,6 +293,7 @@ private:
 
         while (true) {
             auto fixture = createFixture_(n);
+            trace_.reset();
 
             for (auto& capability : stage.capabilities)
                 capability->begin();
@@ -252,6 +311,8 @@ private:
             }
 
             ++sample;
+            // Отложенные отчёты исполнителя — после итераций, вне замера.
+            trace_.flush();
 
             SampleResult sampleResult{
                 .name = name_,

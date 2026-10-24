@@ -23,6 +23,8 @@ namespace Lattice::Benchmarks {
  теста и предназначенными для совместного сбора метрик.
 */
 
+class Trace;
+
 class Capability {
 public:
     virtual ~Capability() = default;
@@ -35,6 +37,7 @@ public:
     virtual void stop() {}  // Закончить измеряемый участок, максимально дешёвая операция
     virtual Metrics end() { return {}; }    // завершить sample: остановить/закрыть временное состояние, сформировать Metrics одного sample
     virtual Metrics result() { return {}; } // сформировать Metrics всего stage
+    virtual void bind(Trace&) {}            // разметка фаз бенча (Phases); остальным не нужна
 };
 
 template<size_t Size>

@@ -108,6 +108,9 @@ BMRUNNER_API std::vector<std::string_view> groups();
 BMRUNNER_API void setSampleCallback(SampleCallback callback);
 BMRUNNER_API void setResultCallback(ResultCallback callback);
 BMRUNNER_API void setCompleteCallback(CompleteCallback callback);
+/// Сводка работ, измеренных на нескольких исполнителях (runGroup / runAll).
+BMRUNNER_API void setComparisonCallback(ComparisonCallback callback);
+BMRUNNER_API void disableComparisonCallback();
 
 BMRUNNER_API void disableSampleCallback();
 BMRUNNER_API void disableResultCallback();
