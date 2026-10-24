@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <BmRunner/Benchmarks.hpp>
+#include "Work_tests.hpp"
 #include <Lattice/Tools/Tests.hpp>
 
 namespace Lattice {
@@ -125,14 +126,7 @@ BENCH_GROUPED(TraceSynthetic, TraceUntraced, AsyncExecutor) {
     bench.measure<AsyncExecutor>([](AsyncExecutor& executor) { return executor.jobs.load(); });
 }
 
-/// Работа с известной ценой: fixed + per·N.
-struct LinearWork : Fixture {
-    size_t n;
-    explicit LinearWork(size_t value) : n(value) {}
-};
-
 constexpr std::chrono::nanoseconds CpuFixed = 1us, CpuPer = 100ns;
-constexpr std::chrono::nanoseconds GpuFixed = 20us, GpuPer = 10ns;
 
 BENCH_GROUP(TraceCompare) {
     bench.config.sizes = {10, 100, 1000};
@@ -142,17 +136,22 @@ BENCH_GROUP(TraceCompare) {
     bench.stages.add<Benchmarks::Time>().samples(5);
 }
 
-// One work, three variants: cpu with one and two workers, gpu.
-BENCH_GROUPED(TraceCompare, Spin, LinearWork) {
-    bench.implementation<LinearWork>("cpu", [&bench](LinearWork& work, Benchmarks::Trace& trace) {
-             auto execute = trace.span(Benchmarks::Phase::Execute);
-             const double workers = bench.parameter("workers");
-             spin(CpuFixed + std::chrono::nanoseconds(int64_t(double(CpuPer.count()) * double(work.n) / workers)));
-         })
-         .axis("workers", {1, 2});
-    bench.implementation<LinearWork>("gpu", [](LinearWork& work, Benchmarks::Trace& trace) {
-        auto execute = trace.span(Benchmarks::Phase::Execute);
-        spin(GpuFixed + GpuPer * work.n);
+// One work, three variants: cpu with one and two workers (here), gpu (Work_tests.cpp — another
+// translation unit, as an implementation from another module would be).
+BENCH_WORK(TraceCompare, Spin, SpinState, "work with a known price: fixed + per·N") {
+    work.input([](size_t n) { return SpinState{n, 0}; });
+    work.check([](const SpinState& expected, const SpinState& actual) { return expected.done == actual.done; });
+    work.reference("cpu");
+}
+
+BENCH_IMPLEMENTATION(TraceCompare, Spin, "cpu", LinearWork) {
+    impl.axis<TestWorkers>();
+    impl.output([](LinearWork& work) { return work.state; });
+    impl.measure([](LinearWork& work, Benchmarks::Run& run) {
+        auto execute = run.trace().span(Benchmarks::Phase::Execute);
+        const double workers = double(run.value<TestWorkers>());
+        spin(CpuFixed + std::chrono::nanoseconds(int64_t(double(CpuPer.count()) * double(work.state.n) / workers)));
+        work.state.done = work.state.n;
     });
 }
 
@@ -169,6 +168,7 @@ TEST(Trace_ComparesImplementations, Fixture,
     REQUIRE(results.size() == 3);
     REQUIRE(results[0].name == "Spin" && results[0].implementation == "cpu" && results[0].label() == "cpu");
     REQUIRE(results[1].label() == "cpu×2" && results[1].params.size() == 1 && results[1].params[0].value == 2);
+    REQUIRE(results[1].params[0].text == "2" && results[1].variant == "cpu×2");
     REQUIRE(results[2].label() == "gpu" && results[2].params.empty());
     REQUIRE(results[1].points.front().name == "Spin/cpu×2");
 

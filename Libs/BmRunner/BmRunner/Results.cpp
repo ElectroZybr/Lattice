@@ -5,6 +5,7 @@
 #include <cmath>
 #include <format>
 #include <map>
+#include <tuple>
 #include <variant>
 
 #include <Lattice/Tools/Exception.hpp>
@@ -17,8 +18,14 @@ struct ResultsFormat;
 using Error = Exception<ResultsFormat>;
 
 constexpr std::string_view Header =
+    "group\tbench\timplementation\tparams\tvariant\tn\tstage\tmetric\tunit\tvalue\tsamples\tmeasured";
+constexpr size_t Columns = 12;
+
+// The second format: no variant names and units — they were derived from params and
+// metric names by every reader. Read and migrated (see migrate()).
+constexpr std::string_view PreviousHeader =
     "group\tbench\timplementation\tparams\tn\tstage\tmetric\tvalue\tsamples\tmeasured";
-constexpr size_t Columns = 10;
+constexpr size_t PreviousColumns = 10;
 
 // The first format (one bench per implementation, tagged with work/executor/mode): read and
 // mapped onto the current one, so saved history keeps comparing with new runs.
@@ -71,11 +78,80 @@ std::string refName(const ValueRef& ref) {
 ResultRow base(const BenchResult& result) {
     return {
         .group = field(result.group),
-        .bench = field(result.name),
+        .bench = field(result.name + inputLabel(result.inputs)),
         .implementation = field(result.implementation),
         .params = field(parametersText(result.params)),
+        .variant = field(result.variant),
         .measured = "-",
     };
+}
+
+// --- Migration of the formats without variant and unit --------------------------------
+
+/// The variant name as the second format derived it: one worker — just `cpu`.
+std::string previousVariant(const ResultRow& row) {
+    if (row.implementation == "-")
+        return "-";
+    std::string label = row.implementation;
+    if (row.params == "-")
+        return label;
+    size_t at = 0;
+    while (at < row.params.size()) {
+        const size_t end = std::min(row.params.find(' ', at), row.params.size());
+        const std::string pair = row.params.substr(at, end - at);
+        at = end + 1;
+        const size_t equals = pair.find('=');
+        if (equals == std::string::npos)
+            continue;
+        if (pair.substr(0, equals) == "workers") {
+            const std::string value = pair.substr(equals + 1);
+            label += value == "1" ? "" : "×" + value;
+        } else {
+            label += "[" + pair + "]";
+        }
+    }
+    return label;
+}
+
+/// The unit as the second format's readers guessed it from the metric's name.
+std::string previousUnit(const ResultRow& row) {
+    const std::string& m = row.metric;
+    if (m.ends_with(".rate") || m.find("bandwidth") != std::string::npos)
+        return "B/s";
+    if (m.starts_with("crossover:"))
+        return "count";
+    if (row.stage == "compare")
+        return m == "error" ? "ratio" : "ns";
+    if (m.ends_with(".error"))
+        return "%";
+    if (m.ends_with(".r"))
+        return "ratio";
+    if (m.ends_with(".samples"))
+        return "count";
+    if (m.starts_with("Time.") || m.starts_with("Phases.") || m.find("(N).") != std::string::npos)
+        return "ns";
+    return "count";
+}
+
+/// Variant names and units for rows of the older formats; comparison rows named the
+/// variant in `implementation` — they get the implementation and params of its rows.
+void migrate(std::vector<ResultRow>& rows) {
+    std::map<std::string, std::pair<std::string, std::string>> variants;   // group/bench/variant → impl, params
+    for (ResultRow& row : rows) {
+        row.unit = previousUnit(row);
+        if (row.stage == "compare")
+            continue;
+        row.variant = previousVariant(row);
+        if (row.variant != "-")
+            variants.try_emplace(row.group + "/" + row.bench + "/" + row.variant, row.implementation, row.params);
+    }
+    for (ResultRow& row : rows) {
+        if (row.stage != "compare")
+            continue;
+        row.variant = row.implementation;
+        if (auto it = variants.find(row.group + "/" + row.bench + "/" + row.variant); it != variants.end())
+            std::tie(row.implementation, row.params) = it->second;
+    }
 }
 
 double median(std::vector<double> values) {
@@ -93,18 +169,23 @@ std::vector<ResultRow> resultRows(const BenchResult& result) {
         for (const StageResult& stage : point.stages) {
             // Ряды семплов по имени метрики.
             std::map<std::string, std::vector<double>> series;
+            std::map<std::string, Unit> units;
             for (const auto& sample : stage.sampleMetrics)
                 for (const CapabilityMetrics& capability : sample) {
                     const auto& metrics = capability.metrics;
-                    for (size_t i = 0; i < metrics.schema.size() && i < metrics.values.size(); ++i)
-                        series[metricName(capability.capability, metrics.schema[i].name)].push_back(metrics.values[i]);
+                    for (size_t i = 0; i < metrics.schema.size() && i < metrics.values.size(); ++i) {
+                        const std::string name = metricName(capability.capability, metrics.schema[i].name);
+                        series[name].push_back(metrics.values[i]);
+                        units[name] = metrics.schema[i].unit;
+                    }
                 }
 
-            auto row = [&](std::string metric, double value, std::vector<double> samples) {
+            auto row = [&](std::string metric, Unit unit, double value, std::vector<double> samples) {
                 ResultRow next = base(result);
                 next.n = std::to_string(point.n);
                 next.stage = field(stage.name);
                 next.metric = field(metric);
+                next.unit = unitText(unit);
                 next.value = value;
                 next.samples = std::move(samples);
                 rows.push_back(std::move(next));
@@ -132,7 +213,7 @@ std::vector<ResultRow> resultRows(const BenchResult& result) {
                     } else if (count == 1) {
                         samples = *only;
                     }
-                    row(std::move(name), metrics.values[i], std::move(samples));
+                    row(std::move(name), metrics.schema[i].unit, metrics.values[i], std::move(samples));
                 }
                 for (const auto& name : matched)
                     series.erase(name);
@@ -140,7 +221,7 @@ std::vector<ResultRow> resultRows(const BenchResult& result) {
             // Ряды без итоговой метрики (Time.time): значение — медиана семплов.
             for (auto& [name, samples] : series) {
                 const double value = median(samples);
-                row(name, value, std::move(samples));
+                row(name, units[name], value, std::move(samples));
             }
         }
     }
@@ -156,6 +237,7 @@ std::vector<ResultRow> resultRows(const BenchResult& result) {
             next.n = "-";
             next.stage = "analysis";
             next.metric = field(std::format("{}.{}", expression, value.name.empty() ? "value" : value.name));
+            next.unit = unitText(value.unit);
             next.value = number ? *number : double(*count);
             rows.push_back(std::move(next));
         }
@@ -165,27 +247,53 @@ std::vector<ResultRow> resultRows(const BenchResult& result) {
 
 std::vector<ResultRow> resultRows(const Comparison& comparison) {
     std::vector<ResultRow> rows;
-    auto row = [&](std::string_view executor, std::string metric, double value) {
+    auto row = [&](const ExecutorFit& fit, std::string metric, Unit unit, double value) {
         rows.push_back({
             .group = field(comparison.group),
-            .bench = field(comparison.work),
-            .implementation = field(executor),
-            .params = "-",
+            .bench = field(comparison.work + comparison.inputs),
+            .implementation = field(fit.implementation),
+            .params = field(fit.params),
+            .variant = field(fit.executor),
             .n = "-",
             .stage = "compare",
             .metric = field(metric),
+            .unit = std::string(unitText(unit)),
             .value = value,
             .measured = "-",
         });
     };
     for (const ExecutorFit& fit : comparison.executors) {
-        row(fit.executor, "fixed", fit.fixed);
-        row(fit.executor, "per", fit.per);
-        row(fit.executor, "error", fit.error);
+        row(fit, "fixed", Unit::Nanoseconds, fit.fixed);
+        row(fit, "per", Unit::Nanoseconds, fit.per);
+        row(fit, "error", Unit::Ratio, fit.error);
     }
     for (const Crossover& crossover : comparison.crossovers)
-        row(crossover.faster, "crossover:" + crossover.slower, crossover.n);
+        for (const ExecutorFit& fit : comparison.executors)
+            if (fit.executor == crossover.faster)
+                row(fit, "crossover:" + crossover.slower, Unit::Count, crossover.n);
     return rows;
+}
+
+std::string_view unitText(Unit unit) noexcept {
+    switch (unit) {
+    case Unit::Count: return "count";
+    case Unit::Nanoseconds: return "ns";
+    case Unit::Bytes: return "B";
+    case Unit::BytesPerSecond: return "B/s";
+    case Unit::Ratio: return "ratio";
+    case Unit::Percent: return "%";
+    case Unit::Cycles: return "cycles";
+    case Unit::None: break;
+    }
+    return "-";
+}
+
+Unit parseUnit(std::string_view text) noexcept {
+    for (Unit unit : {Unit::Count, Unit::Nanoseconds, Unit::Bytes, Unit::BytesPerSecond, Unit::Ratio, Unit::Percent,
+                      Unit::Cycles})
+        if (unitText(unit) == text)
+            return unit;
+    return Unit::None;
 }
 
 std::string rowKey(const ResultRow& row) {
@@ -223,8 +331,9 @@ std::string writeTsv(const ResultTable& table) {
         std::string samples;
         for (size_t i = 0; i < row.samples.size(); ++i)
             samples += (i ? "," : "") + number(row.samples[i]);
-        text += std::format("{}\t{}\t{}\t{}\n", rowKey(row), number(row.value), samples.empty() ? "-" : samples,
-            field(row.measured));
+        text += std::format("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n", row.group, row.bench,
+            row.implementation, row.params, field(row.variant), row.n, row.stage, row.metric, field(row.unit),
+            number(row.value), samples.empty() ? "-" : samples, field(row.measured));
     }
     return text;
 }
@@ -232,7 +341,8 @@ std::string writeTsv(const ResultTable& table) {
 ResultTable parseTsv(std::string_view text) {
     ResultTable table;
     bool header = false;
-    bool legacy = false;
+    bool legacy = false;     // first format
+    bool previous = false;   // second format (or the first, mapped onto it)
     std::vector<std::string> migrated;   // storage of the mapped legacy fields
     size_t line = 0;
     while (!text.empty()) {
@@ -262,7 +372,9 @@ ResultTable parseTsv(std::string_view text) {
         }
         if (!header) {
             if (current == LegacyHeader)
-                legacy = true;
+                legacy = previous = true;
+            else if (current == PreviousHeader)
+                previous = true;
             else if (current != Header)
                 throw Error("line {}: expected the header '{}'", line, Header);
             header = true;
@@ -294,20 +406,28 @@ ResultTable parseTsv(std::string_view text) {
             for (size_t i = 0; i < 4; ++i)
                 fields[i] = migrated[i];
         }
+        if (previous) {
+            // variant and unit: filled in by migrate() once all rows are read.
+            if (fields.size() != PreviousColumns)
+                throw Error("line {}: {} columns, expected {}", line, fields.size(), PreviousColumns);
+            fields.insert(fields.begin() + 4, std::string_view("-"));
+            fields.insert(fields.begin() + 8, std::string_view("-"));
+        }
         if (fields.size() != Columns)
             throw Error("line {}: {} columns, expected {}", line, fields.size(), Columns);
 
         ResultRow row{
             .group = std::string(fields[0]), .bench = std::string(fields[1]),
-            .implementation = std::string(fields[2]), .params = std::string(fields[3]), .n = std::string(fields[4]),
-            .stage = std::string(fields[5]), .metric = std::string(fields[6]),
-            .value = parseNumber(fields[7], line), .measured = std::string(fields[9]),
+            .implementation = std::string(fields[2]), .params = std::string(fields[3]),
+            .variant = std::string(fields[4]), .n = std::string(fields[5]),
+            .stage = std::string(fields[6]), .metric = std::string(fields[7]), .unit = std::string(fields[8]),
+            .value = parseNumber(fields[9], line), .measured = std::string(fields[11]),
         };
-        if (fields[8] != "-") {
+        if (fields[10] != "-") {
             for (size_t start = 0;;) {
-                const size_t comma = fields[8].find(',', start);
+                const size_t comma = fields[10].find(',', start);
                 row.samples.push_back(parseNumber(
-                    fields[8].substr(start, comma == std::string_view::npos ? std::string_view::npos : comma - start), line));
+                    fields[10].substr(start, comma == std::string_view::npos ? std::string_view::npos : comma - start), line));
                 if (comma == std::string_view::npos)
                     break;
                 start = comma + 1;
@@ -317,6 +437,8 @@ ResultTable parseTsv(std::string_view text) {
     }
     if (!header)
         throw Error("no header: not a results table");
+    if (previous)
+        migrate(table.rows);
     return table;
 }
 

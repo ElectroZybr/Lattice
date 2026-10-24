@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <format>
 #include <fstream>
+#include <map>
 #include <utility>
 
 #include <BmRunner/Output.hpp>
@@ -23,8 +24,8 @@ struct Case {
     std::string group;
     std::string name;
     std::string description;
-    void (*function)(Bench&);
-    Fixture::Factory createFixture;
+    std::function<void(Bench&)> function;
+    Bench::FixtureFactory createFixture;
 };
 
 struct GroupConfig {
@@ -41,12 +42,18 @@ struct State {
     CompleteCallback complete = Output::complete;
     ComparisonCallback comparison = Output::comparison;
     std::vector<std::string> swept;   // axes of --sweep
+    std::map<std::string, std::vector<std::string>, std::less<>> axes;   // --axis name=v1,v2
+    std::vector<WorkRegistration> works;
+    std::vector<ImplementationRegistration> implementations;
 };
 
 /// Полное время варианта работы по N — для сводки сравнения.
 struct Record {
     std::string group;
     std::string work;
+    std::string inputs;
+    std::string implementation;
+    std::string params;
     std::string variant;
     std::vector<ComplexityPoint> total;
 };
@@ -76,15 +83,23 @@ std::vector<Comparison> compare(const std::vector<Record>& records) {
         Comparison comparison{
             .group = records[i].group,
             .work = records[i].work,
+            .inputs = records[i].inputs,
         };
         for (size_t j = i; j < records.size(); ++j) {
             const Record& record = records[j];
-            if (record.group != records[i].group || record.work != records[i].work)
+            if (record.group != records[i].group || record.work != records[i].work || record.inputs != records[i].inputs)
                 continue;
             done[j] = true;
             const AffineFit fit = fitAffine(record.total);
             if (fit.valid)
-                comparison.executors.push_back({record.variant, fit.fixed, fit.per, fit.error});
+                comparison.executors.push_back({
+                    .executor = record.variant,
+                    .implementation = record.implementation,
+                    .params = record.params,
+                    .fixed = fit.fixed,
+                    .per = fit.per,
+                    .error = fit.error,
+                });
         }
         if (comparison.executors.size() < 2)
             continue;
@@ -130,6 +145,44 @@ const GroupConfig* findGroupConfig(std::string_view group) {
     return it != groups.end() ? &*it : nullptr;
 }
 
+/// Работа и её реализации из всех единиц трансляции: эталон первым, затем по имени.
+void runWork(Bench& bench, const WorkRegistration& registration) {
+    State& s = state();
+    std::vector<const ImplementationRegistration*> implementations;
+    for (const auto& implementation : s.implementations) {
+        if (implementation.group != registration.group || implementation.work != registration.name)
+            continue;
+        for (const auto* other : implementations)
+            if (other->name == implementation.name)
+                throw Exception<Registry>("'{}/{}' has two implementations '{}': {} and {}", registration.group,
+                    registration.name, implementation.name, other->where, implementation.where);
+        if (implementation.inputType != registration.inputType)
+            throw Exception<Registry>("'{}/{}/{}' ({}) takes {}, the work ({}) gives {}", registration.group,
+                registration.name, implementation.name, implementation.where, implementation.inputType,
+                registration.where, registration.inputType);
+        implementations.push_back(&implementation);
+    }
+    if (implementations.empty())
+        throw Exception<Registry>("work '{}/{}' ({}) has no implementations: add BENCH_IMPLEMENTATION",
+            registration.group, registration.name, registration.where);
+
+    std::unique_ptr<WorkBase> work = registration.create(bench);
+    const std::string& reference = work->referenceName();
+    if (!reference.empty() && std::ranges::none_of(implementations, [&](const auto* i) { return i->name == reference; }))
+        throw Exception<Registry>("work '{}/{}': the reference '{}' is not registered", registration.group,
+            registration.name, reference);
+    std::ranges::sort(implementations, [&](const auto* a, const auto* b) {
+        if ((a->name == reference) != (b->name == reference))
+            return a->name == reference;
+        return a->name < b->name;
+    });
+    for (const auto* implementation : implementations)
+        implementation->run(bench, *work, *implementation);
+}
+
+/// Реализации без своей работы — ошибка, когда фильтр выбирает их работу.
+void checkOrphans(std::string_view filter);
+
 void execute(const Case& benchCase, std::vector<Record>* records = nullptr, ResultTable* table = nullptr) {
     State& s = state();
 
@@ -143,6 +196,9 @@ void execute(const Case& benchCase, std::vector<Record>* records = nullptr, Resu
             records->push_back({
                 .group = result.group,
                 .work = result.name,
+                .inputs = inputLabel(result.inputs),
+                .implementation = result.implementation,
+                .params = parametersText(result.params),
                 .variant = result.label(),
                 .total = totalTime(result)
             });
@@ -188,6 +244,18 @@ GroupRegistrar::GroupRegistrar(std::string_view group, void (*function)(Bench&))
     });
 }
 
+void registerWork(WorkRegistration registration) {
+    State& s = state();
+    const std::string group = registration.group, name = registration.name, description = registration.description;
+    const size_t index = s.works.size();
+    s.works.push_back(std::move(registration));
+    add({group, name, description, [index](Bench& bench) { runWork(bench, state().works[index]); }, nullptr});
+}
+
+void registerImplementation(ImplementationRegistration registration) {
+    state().implementations.push_back(std::move(registration));
+}
+
 void beginSession() {
     SystemInfo::Output::print();
 }
@@ -223,12 +291,32 @@ bool matches(const Case& bench, std::string_view filter) {
 
 }
 
+namespace {
+
+void checkOrphans(std::string_view filter) {
+    State& s = state();
+    for (const auto& implementation : s.implementations) {
+        const Case probe{implementation.group, implementation.work, {}, {}, nullptr};
+        if (!matches(probe, filter))
+            continue;
+        if (std::ranges::none_of(s.works, [&](const WorkRegistration& work) {
+                return work.group == implementation.group && work.name == implementation.work;
+            }))
+            throw Exception<Registry>("implementation '{}/{}/{}' ({}) has no work: declare BENCH_WORK({}, {}, …)",
+                implementation.group, implementation.work, implementation.name, implementation.where,
+                implementation.group, implementation.work);
+    }
+}
+
+}
+
 ResultTable runFiltered(std::string_view filter) {
     State& s = state();
     ResultTable table;
     std::vector<Record> records;
     size_t matched = 0;
 
+    checkOrphans(filter);
     beginSession();
     for (BenchId id = 0; id < s.benches.size(); ++id) {
         const Case* bench = s.benches.get(id);
@@ -267,7 +355,31 @@ bool sweeping(std::string_view axis) {
     return std::ranges::find(swept, axis) != swept.end();
 }
 
+const std::vector<std::string>* axisOverride(std::string_view axis) {
+    const auto& axes = state().axes;
+    const auto it = axes.find(axis);
+    return it != axes.end() ? &it->second : nullptr;
+}
+
+namespace {
+
+int runSuite(int argc, char** argv, std::string_view build);
+
+}
+
 int runMain(int argc, char** argv, std::string_view build) {
+    // A failed check or a broken registration is reported, not std::terminate.
+    try {
+        return runSuite(argc, argv, build);
+    } catch (const std::exception& error) {
+        Logger::error("bench", "{}", error.what());
+        return 1;
+    }
+}
+
+namespace {
+
+int runSuite(int argc, char** argv, std::string_view build) {
     std::string filter;
     std::string tsv;
     bool listOnly = false;
@@ -286,9 +398,23 @@ int runMain(int argc, char** argv, std::string_view build) {
             tsv = value();
         else if (argument == "--sweep")
             state().swept.push_back(value());
+        else if (argument == "--axis") {
+            // --axis workers=4,8
+            const std::string given = value();
+            const size_t equals = given.find('=');
+            if (equals == std::string::npos || equals == 0 || equals + 1 == given.size())
+                throw Exception<Registry>("--axis needs <axis>=<v1,v2,…>, got '{}'", given);
+            std::vector<std::string> values;
+            for (size_t at = equals + 1; at <= given.size();) {
+                const size_t comma = std::min(given.find(',', at), given.size());
+                values.push_back(given.substr(at, comma - at));
+                at = comma + 1;
+            }
+            state().axes[given.substr(0, equals)] = std::move(values);
+        }
         else if (argument == "--help" || argument == "-h") {
             Logger::message(TextFormatter::format(
-                "usage: {} [filter] [--filter <group|bench|mask>] [--tsv <file>] [--sweep <axis>] [--list]", argv[0]));
+                "usage: {} [filter] [--filter <group|bench|mask>] [--tsv <file>] [--sweep <axis>] [--axis <axis>=<v1,v2>] [--list]", argv[0]));
             return 0;
         } else if (!argument.starts_with("--") && filter.empty())
             filter = std::string(argument);
@@ -316,6 +442,8 @@ int runMain(int argc, char** argv, std::string_view build) {
         out << writeTsv(table);
     }
     return 0;
+}
+
 }
 
 std::vector<Info> list() {

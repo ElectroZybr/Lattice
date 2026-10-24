@@ -163,6 +163,19 @@ public:
         deferred_.clear();
     }
 
+    /// Новый вариант работы: набор фаз начинается заново — фазы одной реализации не
+    /// попадают в другую (пустой `Execute` у GPU после CPU).
+    void clear() noexcept {
+        entries_.clear();
+        reset();
+        ++generation_;
+    }
+
+    /// Меняется при clear(): потребители схемы фаз строят её заново.
+    uint64_t generation() const noexcept {
+        return generation_;
+    }
+
     /// Конец семпла: выполнить отложенные отчёты.
     void flush() {
         for (size_t i = 0; i < deferred_.size(); ++i)
@@ -183,6 +196,7 @@ private:
 
     std::vector<Entry> entries_;
     std::vector<std::function<void(Trace&)>> deferred_;
+    uint64_t generation_ = 0;
     uint64_t spans_ = 0;
 };
 

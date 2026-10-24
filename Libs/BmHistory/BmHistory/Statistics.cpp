@@ -153,10 +153,6 @@ Shift shift(double a, std::span<const double> samplesA, double b, std::span<cons
     return result;
 }
 
-bool higherIsBetter(std::string_view metric) noexcept {
-    return metric.ends_with(".rate") || metric.find("bandwidth") != std::string_view::npos;
-}
-
 std::vector<Change> compareTables(const Benchmarks::ResultTable& a, const Benchmarks::ResultTable& b,
                                   const Thresholds& thresholds) {
     std::map<std::string, const Benchmarks::ResultRow*> before;
@@ -173,7 +169,7 @@ std::vector<Change> compareTables(const Benchmarks::ResultTable& a, const Benchm
                       .shift = shift(old.value, old.samples, row.value, row.samples, thresholds)};
         // Ошибка подгонки — качество модели, а не скорость.
         if (change.shift.significant && !row.metric.ends_with(".error") && row.metric != "error") {
-            const bool worse = higherIsBetter(row.metric) ? change.shift.ratio < 1 : change.shift.ratio > 1;
+            const bool worse = Benchmarks::higherIsBetter(row) ? change.shift.ratio < 1 : change.shift.ratio > 1;
             change.regression = worse;
             change.improvement = !worse;
         }

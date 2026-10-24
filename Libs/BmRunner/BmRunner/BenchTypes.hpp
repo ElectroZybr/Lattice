@@ -117,7 +117,9 @@ struct BenchResult;
 /// Один вариант работы (реализация и параметры): подгонка полного времени
 /// t(N) = fixed + per·N.
 struct ExecutorFit {
-    std::string executor;   // имя варианта: `cpu×16`, `gpu`
+    std::string executor;         // имя варианта: `cpu×16`, `gpu`
+    std::string implementation;   // `cpu`
+    std::string params;           // значения осей исполнения: `workers=16`
     double fixed = 0;   // нс: задержка, не зависящая от N
     double per = 0;     // нс на элемент
     double error = 0;   // относительная ошибка подгонки
@@ -134,6 +136,7 @@ struct Crossover {
 struct Comparison {
     std::string group;
     std::string work;
+    std::string inputs;   // значения осей входа (`[fill=0.1]`): сравниваются только равные
     std::vector<ExecutorFit> executors;
     std::vector<Crossover> crossovers;
 };

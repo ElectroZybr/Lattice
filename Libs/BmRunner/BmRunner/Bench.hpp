@@ -10,6 +10,7 @@
 #include <vector>
 #include <algorithm>
 
+#include <BmRunner/Axis.hpp>
 #include <BmRunner/BenchTypes.hpp>
 #include <BmRunner/Visibility.hpp>
 #include <BmRunner/Analysis.hpp>
@@ -24,12 +25,6 @@
 
 
 namespace Lattice::Benchmarks {
-
-/// Hardware threads: the usual top of a `workers` axis.
-inline const double Threads = double(std::max(1u, std::thread::hardware_concurrency()));
-
-/// Whether `lbm run --sweep <axis>` (suite argument `--sweep`) asked for a full sweep of an axis.
-BMRUNNER_API bool sweeping(std::string_view axis);
 
 /**
  @file Bench.hpp
@@ -56,24 +51,24 @@ private:
     std::string group_;
     std::string name_;
 
-    Fixture::Factory createFixture_;
+public:
+    using FixtureFactory = std::function<std::unique_ptr<Fixture>(size_t)>;
+
+    /// Вариант работы, который измеряется сейчас (см. Work.hpp).
+    struct Variant {
+        std::string implementation;
+        std::vector<AxisValue> inputs;   // оси входа
+        std::vector<AxisValue> params;   // оси исполнения
+    };
+
+private:
+    FixtureFactory createFixture_;
     std::unique_ptr<Fixture> shared_;   // the point's fixture when it is reused
     Trace trace_;
+    Run run_{&trace_, {}};
 
-    struct Axis {
-        std::string name;
-        std::vector<double> values;
-    };
-    struct Variant {
-        std::string name;
-        std::function<void(Bench&)> measure;
-        std::vector<Axis> axes;
-    };
-    std::vector<std::string> implementations_;   // names declared so far
-    // The variant being measured: its implementation and parameter values.
-    std::string implementation_;
-    std::vector<ParameterValue> params_;
-    std::string label_;   // work/variant: names of points and samples
+    Variant variant_;
+    std::string label_;   // work[inputs]/variant: names of points and samples
     const SampleCallback& sample_;
     const ResultCallback& result_;
     const CompleteCallback& complete_;
@@ -86,7 +81,7 @@ public:
     Bench(
         std::string_view group,
         std::string_view name,
-        Fixture::Factory createFixture,
+        FixtureFactory createFixture,
         const SampleCallback& sample,
         const ResultCallback& result,
         const CompleteCallback& complete
@@ -111,66 +106,25 @@ public:
         return name_;
     }
 
-    /// A declared implementation: its axes, then the measurement — when the handle dies,
-    /// at the end of `bench.implementation(...).axis(...);`, while everything the bench
-    /// function created (geometry, devices) is still alive.
-    class Implementation {
-        Bench* bench_;
-        Variant variant_;
-        int exceptions_;
-
-    public:
-        Implementation(Bench& bench, Variant variant)
-            : bench_(&bench), variant_(std::move(variant)), exceptions_(std::uncaught_exceptions()) {}
-        Implementation(Implementation&& other) noexcept
-            : bench_(std::exchange(other.bench_, nullptr)), variant_(std::move(other.variant_)),
-              exceptions_(other.exceptions_) {}
-        Implementation(const Implementation&) = delete;
-        Implementation& operator=(const Implementation&) = delete;
-        Implementation& operator=(Implementation&&) = delete;
-
-        ~Implementation() noexcept(false) {
-            // Not while an exception unwinds the bench function.
-            if (bench_ && std::uncaught_exceptions() == exceptions_)
-                bench_->runVariant(variant_);
-        }
-
-        /// An axis of the implementation (`workers`, `batch`): every value is measured
-        /// over every N. `--sweep <axis>` widens it to a full sweep.
-        Implementation& axis(std::string_view name, std::vector<double> values) {
-            if (values.empty())
-                throw Exception<Bench>("axis '{}' of '{}' has no values", name, variant_.name);
-            std::ranges::sort(values);
-            values.erase(std::unique(values.begin(), values.end()), values.end());
-            variant_.axes.push_back({std::string(name), std::move(values)});
-            return *this;
-        }
-    };
-
-    /// One implementation of the work (`cpu`, `gpu`, `gpu-codegen`; the name of the
-    /// matching slot choice in a runtime), with a fixture of its own. Implementations of
-    /// a work are measured over the same sizes and compared (fixed + per·N, N*).
+    /// Измерить вариант работы: `createFixture(n)` строит фикстуру из входа работы.
     template<typename FixtureType, typename Function>
-    [[nodiscard("measured when the handle dies: end the statement after .axis(...)")]]
-    Implementation implementation(std::string_view name, Function function) {
-        if (std::ranges::find(implementations_, name) != implementations_.end())
-            throw Exception<Bench>("'{}' already has an implementation '{}'", name_, name);
-        implementations_.emplace_back(name);
-        return Implementation(*this, Variant{
-            .name = std::string(name),
-            .measure = [function = std::move(function)](Bench& bench) mutable {
-                bench.template measureWith<FixtureType>(
-                    [](size_t n) -> std::unique_ptr<Fixture> { return std::make_unique<FixtureType>(n); }, function);
-            },
-        });
+    void measureVariant(Variant variant, FixtureFactory createFixture, Function& function) {
+        variant_ = std::move(variant);
+        trace_.clear();
+        std::vector<AxisValue> values = variant_.inputs;
+        values.insert(values.end(), variant_.params.begin(), variant_.params.end());
+        run_ = Run(&trace_, std::move(values));
+        label_ = name_ + inputLabel(parameters(variant_.inputs)) + "/" + variantName();
+        struct Clear {
+            Bench& bench;
+            ~Clear() { bench.variant_ = {}; bench.run_ = Run(&bench.trace_, {}); bench.label_.clear(); }
+        } clear{*this};
+        measureWith<FixtureType>(std::move(createFixture), function);
     }
 
-    /// Value of an axis for the variant being measured (inside the measured function).
-    double parameter(std::string_view axis) const {
-        for (const auto& param : params_)
-            if (param.name == axis)
-                return param.value;
-        throw Exception<Bench>("'{}/{}' has no axis '{}'", name_, implementation_, axis);
+    /// Имя измеряемого варианта: `cpu×16`; пусто вне вариантов.
+    std::string variantName() const {
+        return variant_.implementation.empty() ? std::string{} : variant_.implementation + labels(variant_.params);
     }
 
     template<typename FixtureType, typename Function>
@@ -179,14 +133,14 @@ public:
     }
 
     template<typename FixtureType, typename Function>
-    void measureWith(Fixture::Factory createFixture, Function& function) {
-        const Fixture::Factory benchFactory = createFixture_;
-        createFixture_ = createFixture;
+    void measureWith(FixtureFactory createFixture, Function& function) {
+        FixtureFactory benchFactory = createFixture_;
+        createFixture_ = std::move(createFixture);
         struct Restore {
             Bench& bench;
-            Fixture::Factory factory;
-            ~Restore() { bench.createFixture_ = factory; }
-        } restore{*this, benchFactory};
+            FixtureFactory factory;
+            ~Restore() { bench.createFixture_ = std::move(factory); }
+        } restore{*this, std::move(benchFactory)};
 
         if (config.samples == 0)
             throw Exception<Bench>("Samples count cannot be zero");
@@ -197,15 +151,25 @@ public:
         std::vector<PointResult> points;
         points.reserve(config.sizes.size());
 
-        // Функция бенча может принимать Trace вторым аргументом — разметку фаз.
-        constexpr bool traced = std::is_invocable_v<Function&, FixtureType&, Trace&>;
+        // Функция бенча может принимать вторым аргументом Run (контекст варианта) или
+        // Trace — разметку фаз.
+        constexpr bool withRun = std::is_invocable_v<Function&, FixtureType&, Run&>;
+        constexpr bool traced = withRun || std::is_invocable_v<Function&, FixtureType&, Trace&>;
         if constexpr (traced)
             addPhases();
 
         auto invoke = [&](Fixture& fixture) {
             auto& typed = static_cast<FixtureType&>(fixture);
 
-            if constexpr (traced) {
+            if constexpr (withRun) {
+                using Result = std::invoke_result_t<Function&, FixtureType&, Run&>;
+                if constexpr (std::is_void_v<Result>) {
+                    std::invoke(function, typed, run_);
+                } else {
+                    auto value = std::invoke(function, typed, run_);
+                    doNotOptimize(value);
+                }
+            } else if constexpr (traced) {
                 using Result = std::invoke_result_t<Function&, FixtureType&, Trace&>;
                 if constexpr (std::is_void_v<Result>) {
                     std::invoke(function, typed, trace_);
@@ -222,6 +186,7 @@ public:
         };
 
         for (size_t n : config.sizes) {
+            run_.setN(n);
             // A fixture that is expensive to create (GPU buffers, pipelines) may live for the
             // whole point: prepare() still resets its state before every iteration.
             if constexpr (reusesFixture<FixtureType>())
@@ -241,15 +206,15 @@ public:
                 .group = group_,
                 .points = points,
                 .analysis = analysis.run(points),
-                .implementation = implementation_,
-                .params = params_
+                .implementation = variant_.implementation,
+                .inputs = parameters(variant_.inputs),
+                .params = parameters(variant_.params),
+                .variant = variantName(),
             });
         }
     }
 
 private:
-    void runVariant(Variant& variant);
-
     /// Phases — в стадию с Time (там же стена итерации), если её ещё нет ни в одной стадии.
     void addPhases() {
         analysis.phases(N);
@@ -517,41 +482,5 @@ private:
         return result;
     }
 };
-
-/// Axis values of a run: as declared, or 1, 2, 4, … up to the largest for a sweep.
-inline std::vector<double> sweepValues(const std::vector<double>& declared) {
-    std::vector<double> values;
-    const double top = declared.back();
-    for (double value = 1; value < top; value *= 2)
-        values.push_back(value);
-    values.push_back(top);
-    return values;
-}
-
-inline void Bench::runVariant(Variant& variant) {
-    std::vector<std::vector<double>> values;
-    for (const Axis& axis : variant.axes)
-        values.push_back(sweeping(axis.name) ? sweepValues(axis.values) : axis.values);
-
-    // Every combination of the axes, the last axis fastest.
-    std::vector<size_t> index(variant.axes.size(), 0);
-    while (true) {
-        implementation_ = variant.name;
-        params_.clear();
-        for (size_t i = 0; i < variant.axes.size(); ++i)
-            params_.push_back({variant.axes[i].name, values[i][index[i]]});
-        label_ = name_ + "/" + variantLabel(implementation_, params_);
-        variant.measure(*this);
-
-        size_t axis = variant.axes.size();
-        while (axis > 0 && ++index[axis - 1] == values[axis - 1].size())
-            index[--axis] = 0;
-        if (axis == 0)
-            break;
-    }
-    implementation_.clear();
-    params_.clear();
-    label_.clear();
-}
 
 }

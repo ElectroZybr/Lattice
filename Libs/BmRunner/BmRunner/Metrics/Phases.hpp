@@ -128,6 +128,14 @@ private:
     /// Схема меняется, когда появилась фаза или у фазы появился объём. Старые снимки
     /// схемы не трогаются: на них ссылаются уже выданные результаты.
     void rebuild() {
+        if (trace_->generation() != builtGeneration_) {
+            // Другой вариант: свой набор фаз (старая схема остаётся у выданных результатов).
+            columns_.clear();
+            descs_.clear();
+            schema_ = {};
+            builtEntries_ = builtBytes_ = 0;
+            builtGeneration_ = trace_->generation();
+        }
         const auto entries = trace_->entries();
         size_t withBytes = 0;
         for (const auto& entry : entries)
@@ -209,6 +217,7 @@ private:
     std::span<const MetricDesc> schema_;
     size_t builtEntries_ = 0;
     size_t builtBytes_ = 0;
+    uint64_t builtGeneration_ = 0;
     std::vector<std::vector<double>> samples_;
 };
 

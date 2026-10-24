@@ -92,7 +92,7 @@ if has_config("lattice_build_extras") and not has_config("lattice_external_tools
     for name, files in pairs({
         Logger = {"LoggerScope"},
         SysInfo = {"SysInfoOutput"},
-        BmRunner = {"BmRunner", "BmOutput", "Analysis", "Cache", "PerfEvent", "MemoryTraffic", "Trace", "Results"},
+        BmRunner = {"BmRunner", "BmOutput", "Analysis", "Cache", "PerfEvent", "MemoryTraffic", "Trace", "Work", "Results"},
         BmHistory = {"BmHistory"}
     }) do
         target(name .. ".tests")

@@ -71,31 +71,27 @@ struct AnalysisResult {
     }
 };
 
-/// Значение оси параметров исполнения (`workers`, `batch`) у варианта реализации.
+/// Значение оси у варианта: `workers=16`, `fill=0.1`.
 struct ParameterValue {
     std::string name;
     double value = 0;
+    std::string text;   // как в `params`
 };
 
-/// Имя варианта: реализация и её параметры — `cpu` (один поток), `cpu×16` (workers),
-/// `gpu[batch=4]`.
-inline std::string variantLabel(std::string_view implementation, const std::vector<ParameterValue>& params) {
-    std::string label(implementation);
-    for (const auto& param : params) {
-        const auto value = std::format("{}", param.value);
-        if (param.name == "workers")
-            label += param.value == 1 ? "" : "×" + value;   // one thread: just `cpu`
-        else
-            label += "[" + param.name + "=" + value + "]";
-    }
-    return label;
-}
-
-/// `workers=16 batch=4`: параметры по имени; пусто — `-`.
+/// `fill=0.1 workers=16`: параметры по имени; пусто — пустая строка.
 inline std::string parametersText(const std::vector<ParameterValue>& params) {
     std::string text;
     for (const auto& param : params)
-        text += std::format("{}{}={}", text.empty() ? "" : " ", param.name, param.value);
+        text += std::format("{}{}={}", text.empty() ? "" : " ", param.name, param.text);
+    return text;
+}
+
+/// Значения осей входа в имени работы: `[fill=0.1]`. Другие данные — другая таблица
+/// работы, поэтому они в имени бенча, а не в имени варианта.
+inline std::string inputLabel(const std::vector<ParameterValue>& inputs) {
+    std::string text;
+    for (const auto& input : inputs)
+        text += std::format("[{}={}]", input.name, input.text);
     return text;
 }
 
@@ -105,12 +101,15 @@ struct BenchResult {
     std::vector<PointResult> points;
     std::vector<AnalysisResult> analysis;
 
-    // Вариант: реализация работы и значения осей исполнения. Пустая реализация —
-    // работа с одной реализацией (`measure`), она не сравнивается.
+    // Вариант: реализация работы, значения осей входа и исполнения, имя варианта
+    // (`cpu×16`: реализация и подписи осей исполнения). Пустая реализация — бенч с одной
+    // реализацией (`measure`), он не сравнивается.
     std::string implementation;
+    std::vector<ParameterValue> inputs;
     std::vector<ParameterValue> params;
+    std::string variant;
 
-    std::string label() const { return variantLabel(implementation, params); }
+    std::string label() const { return variant.empty() ? implementation : variant; }
 };
 
 /// Подгонка y = fixed + per·x по точкам (относительные МНК: вес 1/y²).

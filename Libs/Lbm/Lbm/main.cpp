@@ -103,29 +103,10 @@ bool glob(std::string_view mask, std::string_view text) {
     return !text.empty() && (mask.front() == '?' || mask.front() == text.front()) && glob(mask.substr(1), text.substr(1));
 }
 
-/// Name of a row's variant: `cpu`, `cpu×16`, `gpu[batch=4]`; empty for a work with one
-/// implementation. Comparison rows already hold the variant's name.
+/// Name of a row's variant (`cpu×16`, named by BmRunner); empty for a work with one
+/// implementation.
 std::string variantOf(const Bmr::ResultRow& row) {
-    if (row.implementation == "-")
-        return {};
-    std::string label = row.implementation;
-    if (row.params == "-")
-        return label;
-    size_t at = 0;
-    while (at < row.params.size()) {
-        const size_t end = std::min(row.params.find(' ', at), row.params.size());
-        const std::string pair = row.params.substr(at, end - at);
-        at = end + 1;
-        const size_t equals = pair.find('=');
-        if (equals == std::string::npos)
-            continue;
-        const std::string name = pair.substr(0, equals), value = pair.substr(equals + 1);
-        if (name == "workers")
-            label += value == "1" ? "" : "×" + value;
-        else
-            label += "[" + pair + "]";
-    }
-    return label;
+    return row.variant == "-" ? std::string{} : row.variant;
 }
 
 /// A bench filter as BmRunner understands it: group, work or mask over
@@ -138,20 +119,8 @@ bool benchMatches(const Bmr::ResultRow& row, std::string_view filter) {
     return glob(filter, work) || (!variant.empty() && glob(filter, work + "/" + variant));
 }
 
-/// Units are not stored in the table: they follow from the metric's name.
 Bmr::Unit unitOf(const Bmr::ResultRow& row) {
-    const std::string& m = row.metric;
-    if (Bh::higherIsBetter(m))
-        return Bmr::Unit::BytesPerSecond;
-    if (m.ends_with(".error") || m == "error")
-        return Bmr::Unit::Ratio;
-    if (m.starts_with("crossover:"))
-        return Bmr::Unit::Count;
-    if (row.stage == "compare")
-        return Bmr::Unit::Nanoseconds;
-    if (m.starts_with("Time.") || m.starts_with("Phases.") || m.find("(N).") != std::string::npos)
-        return m.ends_with(".r") || m.ends_with(".samples") ? Bmr::Unit::Ratio : Bmr::Unit::Nanoseconds;
-    return Bmr::Unit::Count;
+    return Bmr::parseUnit(row.unit);
 }
 
 std::string value(const Bmr::ResultRow& row, double number) {
@@ -582,9 +551,9 @@ void sideBySide(const std::string& work, const std::vector<const Bmr::ResultRow*
         if (row->metric.starts_with("crossover:")) {
             const std::string slower = row->metric.substr(10);
             crossovers += row->value > 0
-                ? std::format("  <light>{}</> <mut>beats</> <light>{}</> <mut>from N ≈</> <light>{}</>", row->implementation,
+                ? std::format("  <light>{}</> <mut>beats</> <light>{}</> <mut>from N ≈</> <light>{}</>", variantOf(*row),
                       slower, compactN(std::format("{:.0f}", row->value)))
-                : std::format("  <light>{}</> <mut>beats</> <light>{}</> <mut>at every N</>", row->implementation, slower);
+                : std::format("  <light>{}</> <mut>beats</> <light>{}</> <mut>at every N</>", variantOf(*row), slower);
         }
     if (!crossovers.empty())
         Logger::message(TextFormatter::format("{}", crossovers));
@@ -731,13 +700,13 @@ void details(const Bmr::ResultTable& table) {
         std::map<std::string, std::pair<double, double>> fits;
         std::string crossover;
         for (const auto* row : rows) {
-            if (row->metric == "fixed") fits[row->implementation].first = row->value;
-            if (row->metric == "per") fits[row->implementation].second = row->value;
+            if (row->metric == "fixed") fits[variantOf(*row)].first = row->value;
+            if (row->metric == "per") fits[variantOf(*row)].second = row->value;
             if (row->metric.starts_with("crossover:"))
                 crossover += row->value > 0
-                    ? std::format(" <light>{}</> <mut>faster than {} from N ≈</> <light>{}</>", row->implementation,
+                    ? std::format(" <light>{}</> <mut>faster than {} from N ≈</> <light>{}</>", variantOf(*row),
                           row->metric.substr(10), compactN(std::format("{:.0f}", row->value)))
-                    : std::format(" <light>{}</> <mut>faster than {} at every N</>", row->implementation, row->metric.substr(10));
+                    : std::format(" <light>{}</> <mut>faster than {} at every N</>", variantOf(*row), row->metric.substr(10));
         }
         std::string text;
         for (const auto& [executor, fit] : fits)
@@ -1106,7 +1075,7 @@ int history(const Context& context, const Arguments& arguments) {
                 Cell change, mark;
                 for (const auto& shift : shifts)
                     if (shift.index == i) {
-                        const bool better = Bh::higherIsBetter(row.metric) == (shift.shift.ratio > 1);
+                        const bool better = Bmr::higherIsBetter(row) == (shift.shift.ratio > 1);
                         change = {std::format("{:+.1f}%", (shift.shift.ratio - 1) * 100), better ? "ok" : "err"};
                         mark = {better ? "▲" : "▼", better ? "ok" : "err"};
                     }
@@ -1145,7 +1114,7 @@ int regressions(const Context& context, const Arguments& arguments) {
                 continue;
             const auto points = Bh::series(versions, Bmr::rowKey(row));
             for (const auto& shift : Bh::changePoints(points, context.thresholds())) {
-                const bool worse = Bh::higherIsBetter(row.metric) ? shift.shift.ratio < 1 : shift.shift.ratio > 1;
+                const bool worse = Bmr::higherIsBetter(row) ? shift.shift.ratio < 1 : shift.shift.ratio > 1;
                 const auto& run = points[shift.index].run;
                 const auto position = std::ranges::find_if(versions, [&](const auto& v) { return v.first.commit == run.commit; });
                 if (!worse || size_t(position - versions.begin()) < sinceIndex)

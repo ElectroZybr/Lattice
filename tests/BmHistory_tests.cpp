@@ -38,8 +38,8 @@ std::vector<double> noisy(double center, double spread, size_t count, std::mt199
 
 Benchmarks::ResultRow row(std::string bench, std::string n, std::vector<double> samples) {
     const double value = median(samples);
-    return {.group = "G", .bench = std::move(bench), .implementation = "-", .params = "-", .n = std::move(n),
-            .stage = "Time", .metric = "Time.median", .value = value, .samples = std::move(samples), .measured = "-"};
+    return {.group = "G", .bench = std::move(bench), .implementation = "-", .params = "-", .variant = "-", .n = std::move(n),
+            .stage = "Time", .metric = "Time.median", .unit = "ns", .value = value, .samples = std::move(samples), .measured = "-"};
 }
 
 SaveRequest request(std::vector<Benchmarks::ResultRow> rows) {
@@ -70,7 +70,8 @@ TEST(BmHistory_RankTestAndShift, Fixture,
     REQUIRE(wide.noisy && !wide.significant);
     // Без семплов решает только порог.
     REQUIRE(shift(100, {}, 110, {}).significant && !shift(100, {}, 103, {}).significant);
-    REQUIRE(higherIsBetter("Phases.Transfer.In.rate") && !higherIsBetter("Time.median"));
+    REQUIRE(Lattice::Benchmarks::higherIsBetter({.metric = "Phases.Transfer.In.rate", .unit = "B/s"}));
+    REQUIRE(!Lattice::Benchmarks::higherIsBetter({.metric = "Time.median", .unit = "ns"}));
 }
 
 TEST(BmHistory_SavesAndMergesRuns, Fixture,

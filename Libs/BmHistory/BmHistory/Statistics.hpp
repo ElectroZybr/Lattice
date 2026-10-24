@@ -40,10 +40,6 @@ struct Shift {
 Shift shift(double a, std::span<const double> samplesA, double b, std::span<const double> samplesB,
             const Thresholds& thresholds = {});
 
-/// Higher is better for throughput (`.rate`, `bandwidth`), lower for everything else
-/// (time, phases, fixed/per, error, crossover N).
-bool higherIsBetter(std::string_view metric) noexcept;
-
 struct Change {
     Benchmarks::ResultRow before;   // A
     Benchmarks::ResultRow after;    // B
