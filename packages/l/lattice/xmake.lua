@@ -3,7 +3,6 @@ package("lattice")
     set_license("GPL-3.0-only")
 
     set_sourcedir(path.join(os.scriptdir(), "../../.."))
-    set_policy("package.install_always", true)
 
     add_configs("shared", {
         description = "Build the shared library",

@@ -3,7 +3,6 @@ package("lattice-tools")
     set_description("Header-only data and formatting utilities")
     set_license("GPL-3.0-only")
     set_sourcedir(path.join(os.scriptdir(), "../../../Libs/Tools"))
-    set_policy("package.install_always", true)
     add_deps("glm 1.0.1")
 
     on_install(function (package)

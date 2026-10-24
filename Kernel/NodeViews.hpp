@@ -170,6 +170,11 @@ public:
         return resolveOwner(role, owner);
     }
 
+    /// By id alone: an id names one export, no Context role is involved.
+    Lattice::ResolvedExport resolveExport(Lattice::ExportId id) const {
+        return nodeSystem_->exports.get(id) ? nodeSystem_->exports.resolve(id) : Lattice::ResolvedExport{};
+    }
+
     Lattice::ResolvedExport resolveExport(Lattice::ExportId id, Lattice::NodeId from) const {
         const Lattice::Export* entry = nodeSystem_->exports.get(id);
         if (!entry)
