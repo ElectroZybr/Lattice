@@ -607,8 +607,10 @@ void details(const Bmr::ResultTable& table) {
             if (row->metric == "fixed") fits[row->executor].first = row->value;
             if (row->metric == "per") fits[row->executor].second = row->value;
             if (row->metric.starts_with("crossover:"))
-                crossover += std::format(" <light>{}</> <mut>faster than {} from N ≈</> <light>{}</>", row->executor,
-                    row->metric.substr(10), row->value > 0 ? compactN(std::format("{:.0f}", row->value)) : "0");
+                crossover += row->value > 0
+                    ? std::format(" <light>{}</> <mut>faster than {} from N ≈</> <light>{}</>", row->executor,
+                          row->metric.substr(10), compactN(std::format("{:.0f}", row->value)))
+                    : std::format(" <light>{}</> <mut>faster than {} at every N</>", row->executor, row->metric.substr(10));
         }
         std::string text;
         for (const auto& [executor, fit] : fits)

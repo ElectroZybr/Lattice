@@ -47,6 +47,7 @@ private:
     std::string name_;
 
     Fixture::Factory createFixture_;
+    std::unique_ptr<Fixture> shared_;   // the point's fixture when it is reused
     Trace trace_;
     std::string executor_;
     std::string work_;
@@ -142,7 +143,12 @@ public:
         };
 
         for (size_t n : config.sizes) {
+            // A fixture that is expensive to create (GPU buffers, pipelines) may live for the
+            // whole point: prepare() still resets its state before every iteration.
+            if constexpr (reusesFixture<FixtureType>())
+                shared_ = createFixture_(n);
             PointResult point = run(n, operations, invoke);
+            shared_.reset();
 
             if (result_)
                 result_(point);
@@ -187,6 +193,16 @@ private:
     #else
         (void)value;
     #endif
+    }
+
+    /// `static constexpr bool Reuse = true` in a fixture: one fixture per point N, shared by
+    /// calibration, stages and samples, instead of a new one per sample.
+    template<typename FixtureType>
+    static consteval bool reusesFixture() {
+        if constexpr (requires { FixtureType::Reuse; })
+            return static_cast<bool>(FixtureType::Reuse);
+        else
+            return false;
     }
 
     template<typename FixtureType>
@@ -292,7 +308,8 @@ private:
         size_t sample = 0;
 
         while (true) {
-            auto fixture = createFixture_(n);
+            auto owned = shared_ ? nullptr : createFixture_(n);
+            Fixture* fixture = shared_ ? shared_.get() : owned.get();
             trace_.reset();
 
             for (auto& capability : stage.capabilities)
@@ -375,7 +392,8 @@ private:
 
     template<typename Invoke>
     size_t calibrate(size_t n, Invoke& invoke) {
-        auto fixture = createFixture_(n);
+        auto owned = shared_ ? nullptr : createFixture_(n);
+        Fixture* fixture = shared_ ? shared_.get() : owned.get();
 
         size_t iterations = 1;
 

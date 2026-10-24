@@ -142,6 +142,48 @@ BENCH_GROUPED(BmRunnerComposition, BmRunnerPerOperation, BmRunnerStepsFixture) {
     );
 }
 
+struct CountedFixture : Fixture {
+    static inline int created = 0;
+    size_t value;
+    explicit CountedFixture(size_t n) : value(n) { ++created; }
+};
+
+struct ReusedFixture : CountedFixture {
+    static constexpr bool Reuse = true;
+    using CountedFixture::CountedFixture;
+};
+
+BENCH_GROUPED(BmRunnerFixtures, BmRunnerFreshFixture, CountedFixture) {
+    bench.config.sizes = {2, 3};
+    bench.config.target = std::chrono::microseconds{0};
+    bench.analysis.clear();
+    bench.stages.clear();
+    bench.stages.add<Benchmarks::Time>().samples(4);
+    bench.measure<CountedFixture>([](CountedFixture& fixture) { return fixture.value; });
+}
+
+BENCH_GROUPED(BmRunnerFixtures, BmRunnerReusedFixture, ReusedFixture) {
+    bench.config.sizes = {2, 3};
+    bench.config.target = std::chrono::microseconds{0};
+    bench.analysis.clear();
+    bench.stages.clear();
+    bench.stages.add<Benchmarks::Time>().samples(4);
+    bench.measure<ReusedFixture>([](ReusedFixture& fixture) { return fixture.value; });
+}
+
+TEST(BmRunner_ReusesFixturesPerPoint, Fixture,
+    "Фикстура с Reuse должна создаваться один раз на точку N, без него — на каждый семпл.") {
+    Benchmarks::disableCallbacks();
+    CountedFixture::created = 0;
+    Benchmarks::run("BmRunnerFreshFixture");
+    // 2 точки × (калибровка + 4 семпла).
+    REQUIRE(CountedFixture::created == 2 * 5);
+    CountedFixture::created = 0;
+    Benchmarks::run("BmRunnerReusedFixture");
+    REQUIRE(CountedFixture::created == 2);
+    Benchmarks::resetCallbacks();
+}
+
 TEST(BmRunner_InheritsAndOverridesGroupStages, Fixture,
     "BmRunner должен наследовать stages группы и разрешать локальную замену.") {
     Benchmarks::BenchResult completed;
