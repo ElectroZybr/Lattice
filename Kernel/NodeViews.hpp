@@ -1057,6 +1057,17 @@ ExportId ObjectBuild<T>::globalAction(std::string_view name, Result (Owner::*mem
 
 template<class T>
 template<class F>
+void ObjectBuild<T>::onMaintain(F&& callback) {
+    static_assert(std::is_invocable_r_v<void, F&, T&>);
+    auto object = ref();
+    object.runtime()->ops.onMaintain(object.id(),
+        [callback = std::forward<F>(callback)](void* ptr) mutable {
+            std::invoke(callback, *static_cast<T*>(ptr));
+        });
+}
+
+template<class T>
+template<class F>
 void ObjectBuild<T>::onRetire(F&& callback) {
     static_assert(std::is_invocable_r_v<void, F&, T&>);
     auto object = ref();

@@ -79,6 +79,8 @@ public:
     template<class Owner, class Result, class... Args>
     ExportId globalAction(std::string_view name, Result (Owner::*member)(Args...) const);
     template<class F> void onRetire(F&& callback);
+    /// Called on the host at each maintain(), only while this object is active.
+    template<class F> void onMaintain(F&& callback);
     template<class F> void readyToDestroy(F&& callback);
     /// Run this object as the branch service: run(T&[, idle]) until stop(T&).
     template<class Run, class Stop> void service(Run run, Stop stop);

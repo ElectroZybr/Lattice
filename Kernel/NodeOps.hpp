@@ -22,6 +22,7 @@ public:
         : nodeSystem_(nodeSystem) {}
 
     void onRetire(NodeId id, std::function<void(void*)> callback);
+    void onMaintain(NodeId id, std::function<void(void*)> callback);
     void readyToDestroy(NodeId id, std::function<bool(const void*)> callback);
     void bindService(NodeId id, std::unique_ptr<ServiceRunner> service);
     ServiceRunner* service(NodeId id) const;
@@ -66,11 +67,13 @@ public:
 private:
     struct Lifecycle {
         std::function<void(void*)> retire;
+        std::function<void(void*)> maintain;
         std::function<bool(const void*)> ready;
         std::unique_ptr<ServiceRunner> service;
         bool retireCalled = false;
     };
     void beginRetire(NodeId id);
+    void maintainObjects();
     bool isReadyToDestroy(NodeId id) const;
     bool configurable(NodeId id) const;
     void configure(NodeId id);
@@ -82,6 +85,8 @@ private:
     std::vector<std::pair<NodeId, NodeId>> observations_;   // observer, observed
     std::vector<std::pair<NodeId, RoleId>> roleObservations_;   // observer, role
     bool reconfiguring_ = false;
+    bool maintainingObjects_ = false;
+    NodeId maintainingObject_ = InvalidNodeId;
     std::vector<std::vector<NodeId>> retiring_;
     std::vector<NodeId> destroying_;
 };

@@ -34,6 +34,39 @@ std::vector<NodeId> NodeOps::services(NodeId root) const {
     return nodes;
 }
 
+void NodeOps::onMaintain(NodeId id, std::function<void(void*)> callback) {
+    const auto& node = nodeSystem_.registry.require(id);
+    if (node.state != NodeState::Active || !node.object.constructed)
+        throw Exception<NodeOps>("Maintenance requires an active constructed object");
+    if (lifecycle_.size() <= id) lifecycle_.resize(id + 1);
+    lifecycle_[id].maintain = std::move(callback);
+}
+
+void NodeOps::maintainObjects() {
+    if (maintainingObjects_) return;
+    maintainingObjects_ = true;
+    struct Guard { bool& active; ~Guard() { active = false; } } guard{maintainingObjects_};
+    std::vector<std::pair<NodeId, uint64_t>> pending;
+    for (NodeId id = 0; id < lifecycle_.size(); ++id)
+        if (lifecycle_[id].maintain && nodeSystem_.registry.get(id))
+            pending.emplace_back(id, nodeSystem_.registry.generation(id));
+    for (auto [id, generation] : pending) {
+        void* object = nullptr;
+        {
+            const auto* node = nodeSystem_.registry.get(id);
+            if (!node || node->state != NodeState::Active || !node->object.constructed ||
+                nodeSystem_.registry.generation(id) != generation) continue;
+            object = node->object.ptr;
+        }
+        auto callback = lifecycle_[id].maintain;
+        if (callback) {
+            maintainingObject_ = id;
+            struct Reset { NodeId& id; ~Reset() { id = InvalidNodeId; } } reset{maintainingObject_};
+            callback(object);
+        }
+    }
+}
+
 void NodeOps::onRetire(NodeId id, std::function<void(void*)> callback) {
     const auto& node = nodeSystem_.registry.require(id);
     if (node.state != NodeState::Active || !node.object.constructed)
@@ -69,6 +102,7 @@ void NodeOps::beginRetire(NodeId id) {
 }
 
 bool NodeOps::isReadyToDestroy(NodeId id) const {
+    if (id == maintainingObject_) return false;
     const auto* node = nodeSystem_.registry.get(id);
     if (!node || !node->object.ptr || !node->object.constructed)
         return true;
@@ -265,6 +299,7 @@ size_t NodeOps::collectRetired() {
 }
 
 void NodeOps::maintain() {
+    maintainObjects();
     // A Context change reconfigures only the branches whose configure read that role;
     // tree changes were marked when they happened.
     for (const RoleId role : nodeSystem_.context.changedRoles())

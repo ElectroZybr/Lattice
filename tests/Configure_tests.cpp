@@ -298,3 +298,42 @@ TEST(Exports_ExecuteOnRoutesThroughQueue, RuntimeFixture,
 }
 
 }
+
+namespace Lattice::ConfigureTests {
+TEST(Lifecycle_MaintenanceRunsActiveObjectsOnly, RuntimeFixture) {
+    auto& nodes = fixture.run_ctx.nodes;
+    auto root = fixture.build(fixture.root);
+    auto first = root.emplace<Owned>("first");
+    auto second = root.emplace<Owned>("second");
+    int calls = 0;
+    first.onMaintain([&](Owned&) {
+        ++calls;
+        // Mutate storage and retire another callback before its turn.
+        for (int i = 0; i < 100; ++i) root.emplace<Owned>(std::to_string(i));
+        nodes.ops.retireBranch(second.id());
+        nodes.ops.maintain(); // Nested checkpoints do not recursively call hooks.
+    });
+    second.onMaintain([](Owned&) { throw std::runtime_error("retired hook executed"); });
+    nodes.ops.maintain();
+    REQUIRE(calls == 1);
+    first.onMaintain([&](Owned&) { ++calls; });
+    nodes.ops.retireBranch(first.id());
+    nodes.ops.maintain();
+    REQUIRE(calls == 1);
+}
+}
+
+namespace Lattice::ConfigureTests {
+TEST(Lifecycle_MaintenanceCanRetireItself, RuntimeFixture) {
+    auto& nodes = fixture.run_ctx.nodes;
+    auto object = fixture.build(fixture.root).emplace<Owned>("self");
+    const auto id = object.id();
+    object.onMaintain([&](Owned&) {
+        nodes.ops.retireBranch(id);
+        nodes.ops.maintain();
+        REQUIRE(nodes.registry.get(id) != nullptr);
+    });
+    nodes.ops.maintain();
+    REQUIRE(nodes.registry.get(id) == nullptr);
+}
+}
