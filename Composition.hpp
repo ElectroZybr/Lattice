@@ -4,4 +4,5 @@
 // extern "C" const Lattice::Package lattice_package{...}.
 #include <Lattice/Kernel/NodeViews.hpp>
 #include <Lattice/Kernel/TableExports.hpp>
+#include <Lattice/Kernel/PipelineExports.hpp>
 #include <Lattice/Kernel/Package.hpp>

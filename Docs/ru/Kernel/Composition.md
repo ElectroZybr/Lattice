@@ -128,6 +128,33 @@ auto renderer = run.emplace<Renderer>("renderer", device.ref());
 (замена слота, откат) переконфигурирует сразу — объекты не держат удалённый узел.
 Неоднозначный `focus` — ошибка, как и в `compose`.
 
+## Конвейеры
+
+Последовательность работы (шаг симуляции, кадр) — дерево узлов `PipelineAPI`
+(`Lattice/Kernel/PipelineAPI.hpp`, только заголовок). `Pipeline` выполняет детей своего
+узла по порядку дерева; сам он тоже `PipelineAPI`, поэтому группы вкладываются.
+`CallStage<T>` делает стадией метод обычного объекта — реализация о конвейере не знает.
+
+```cpp
+extern "C" void compose(NodeBuild root) {
+    auto integrator = root.emplace<Verlet>("integrator", atoms);
+    root.emplace<Lattice::CallStage<Verlet>, Lattice::PipelineAPI>("predict", integrator, &Verlet::predict);
+    auto forces = root.branch("forces");
+    forces.emplace<Lattice::CallStage<Walls>, Lattice::PipelineAPI>("walls", walls, &Walls::addForces);
+    forces.construct<Lattice::Pipeline, Lattice::PipelineAPI>();
+    root.emplace<Lattice::CallStage<Verlet>, Lattice::PipelineAPI>("correct", integrator, &Verlet::correct);
+    root.construct<Lattice::Pipeline, Lattice::PipelineAPI>();
+}
+
+extern "C" void configure(NodeConfigure root) {
+    Lattice::configurePipelines(root);
+}
+```
+
+* Порядок стадий — порядок детей: композиция создаёт их в нужном порядке. Новый узел
+  встаёт в конец после `maintain`, retire стадии убирает её до удаления.
+* `setStages` ждёт конца текущего `run()`: конвейер может выполняться в потоке сервиса.
+
 ## Поток исполнения экспортов
 
 Состояние объекта, которым владеет другой поток (симуляция в своём сервисе), нельзя
