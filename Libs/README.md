@@ -8,9 +8,12 @@
 | `Logger/` | `Logger` (shared) | `lattice-logger` | `Logger/Logger.hpp`, `Logger/LogScope.hpp` |
 | `SysInfo/` | `SysInfo` (shared) | `lattice-sysinfo` | `SysInfo/SystemInfo.hpp`, `SysInfo/Output.hpp` |
 | `BmRunner/` | `BmRunner` (shared) | `lattice-bmrunner` | `BmRunner/Benchmarks.hpp`, `BmRunner/Metrics.hpp` |
+| `BmHistory/` | `BmHistory` (static) | — | `BmHistory/Repository.hpp`, `BmHistory/Statistics.hpp` |
+| `Lbm/` | `lbm` (binary) | — (`xmake install-lbm`) | — |
 
 Зависимости: Logger → Tools; SysInfo → Logger (форматированный вывод);
-BmRunner → SysInfo и Logger. Tools содержит header-only утилиты и тип данных Value
+BmRunner → SysInfo и Logger; BmHistory → BmRunner; `lbm` (lattice-benchmarks:
+запуск наборов, история в git, сравнение, Docs/ru/BmHistory.md) → BmHistory. Tools содержит header-only утилиты и тип данных Value
 с зависимостью от GLM; старые публичные пути этих SDK-заголовков сохранены.
 Logger хранит sinks, настройки вывода и локальный для потока логгер в одной общей
 динамической библиотеке: приложение и плагины используют одно состояние.

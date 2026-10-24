@@ -5,6 +5,7 @@
 
 #include <BmRunner/Bench.hpp>
 #include <BmRunner/BenchTypes.hpp>
+#include <BmRunner/Results.hpp>
 #include <Lattice/Tools/Fixture.hpp>
 #include <BmRunner/Visibility.hpp>
 
@@ -99,6 +100,11 @@ public:
 };
 
 BMRUNNER_API void run(std::string_view name);
+/// Бенчи по фильтру: пусто — все; имя группы или бенча; маска `*`/`?` по `group/name`.
+/// Печатает как обычно и возвращает таблицу результатов со сводкой исполнителей.
+BMRUNNER_API ResultTable runFiltered(std::string_view filter);
+/// Точка входа набора (см. BmRunner/Main.hpp): `[filter] [--filter f] [--tsv file] [--list]`.
+BMRUNNER_API int runMain(int argc, char** argv, std::string_view build);
 BMRUNNER_API void runGroup(std::string_view group);
 BMRUNNER_API void runAll();
 

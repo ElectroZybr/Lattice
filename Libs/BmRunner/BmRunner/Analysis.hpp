@@ -88,8 +88,8 @@ constexpr std::string_view modeName(Mode mode) noexcept {
 }
 
 struct BenchResult {
-    std::string_view name;
-    std::string_view group;
+    std::string name;
+    std::string group;
     std::vector<PointResult> points;
     std::vector<AnalysisResult> analysis;
 

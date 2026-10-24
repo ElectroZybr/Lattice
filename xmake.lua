@@ -24,7 +24,7 @@ if has_config("lattice_external_tools") then
         add_requires("lattice-bmrunner")
     end
 else
-    includes("Libs/Tools", "Libs/Logger", "Libs/SysInfo", "Libs/BmRunner")
+    includes("Libs/Tools", "Libs/Logger", "Libs/SysInfo", "Libs/BmRunner", "Libs/BmHistory", "Libs/Lbm")
 end
 
 target("Lattice")
@@ -92,7 +92,8 @@ if has_config("lattice_build_extras") and not has_config("lattice_external_tools
     for name, files in pairs({
         Logger = {"LoggerScope"},
         SysInfo = {"SysInfoOutput"},
-        BmRunner = {"BmRunner", "BmOutput", "Analysis", "Cache", "PerfEvent", "MemoryTraffic", "Trace"}
+        BmRunner = {"BmRunner", "BmOutput", "Analysis", "Cache", "PerfEvent", "MemoryTraffic", "Trace", "Results"},
+        BmHistory = {"BmHistory"}
     }) do
         target(name .. ".tests")
             set_kind("binary")

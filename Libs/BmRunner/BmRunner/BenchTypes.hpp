@@ -98,12 +98,14 @@ struct StageResult {
     double overhead = 0;
     std::vector<CapabilityMetrics> capabilities;
     std::vector<UnavailableCapability> unavailable;
+    // Метрики каждого семпла (уже на итерацию): статистика сравнения запусков.
+    std::vector<std::vector<CapabilityMetrics>> sampleMetrics;
 };
 
-// Хранит результат прогона одного поинта по N
+// Хранит результат прогона одного поинта по N. Строки — копии: результат живёт дольше бенча.
 struct PointResult {
-    std::string_view name;
-    std::string_view group;
+    std::string name;
+    std::string group;
 
     size_t n = 0;
     std::vector<StageResult> stages;

@@ -1,9 +1,12 @@
 #include "Benchmarks.hpp"
 
 #include <algorithm>
+#include <format>
+#include <fstream>
 #include <utility>
 
 #include <BmRunner/Output.hpp>
+#include <BmRunner/Results.hpp>
 #include <SysInfo/Output.hpp>
 #include <Lattice/Tools/ObjectRegistry.hpp>
 #include <Lattice/Tools/Exception.hpp>
@@ -64,9 +67,8 @@ std::vector<ComplexityPoint> totalTime(const BenchResult& result) {
 }
 
 /// Работы, измеренные на двух и более исполнителях: подгонка каждой и пороги N*.
-void compare(const std::vector<Record>& records, const ComparisonCallback& callback) {
-    if (!callback)
-        return;
+std::vector<Comparison> compare(const std::vector<Record>& records) {
+    std::vector<Comparison> comparisons;
     std::vector<bool> done(records.size());
     for (size_t i = 0; i < records.size(); ++i) {
         if (done[i])
@@ -100,8 +102,9 @@ void compare(const std::vector<Record>& records, const ComparisonCallback& callb
                 const double n = std::max(0.0, (fast.fixed - slow.fixed) / (slow.per - fast.per));
                 comparison.crossovers.push_back({fast.executor, slow.executor, n});
             }
-        callback(comparison);
+        comparisons.push_back(std::move(comparison));
     }
+    return comparisons;
 }
 
 State& state() {
@@ -128,12 +131,15 @@ const GroupConfig* findGroupConfig(std::string_view group) {
     return it != groups.end() ? &*it : nullptr;
 }
 
-void execute(const Case& benchCase, std::vector<Record>* records = nullptr) {
+void execute(const Case& benchCase, std::vector<Record>* records = nullptr, ResultTable* table = nullptr) {
     State& s = state();
 
     const CompleteCallback complete = [&](const BenchResult& result) {
         if (s.complete)
             s.complete(result);
+        if (table)
+            for (auto& row : resultRows(result))
+                table->rows.push_back(std::move(row));
         if (records && !result.executor.empty())
             records->push_back({
                 .group = std::string(result.group),
@@ -199,29 +205,112 @@ void run(std::string_view name) {
     execute(s.benches.require(id));
 }
 
-void runGroup(std::string_view group) {
+namespace {
+
+/// Маска с `*` (любая строка) и `?` (один символ).
+bool glob(std::string_view mask, std::string_view text) {
+    if (mask.empty())
+        return text.empty();
+    if (mask.front() == '*')
+        return glob(mask.substr(1), text) || (!text.empty() && glob(mask, text.substr(1)));
+    return !text.empty() && (mask.front() == '?' || mask.front() == text.front()) &&
+           glob(mask.substr(1), text.substr(1));
+}
+
+bool matches(const Case& bench, std::string_view filter) {
+    if (filter.empty() || filter == bench.group || filter == bench.name)
+        return true;
+    return glob(filter, bench.group.empty() ? bench.name : bench.group + "/" + bench.name);
+}
+
+}
+
+ResultTable runFiltered(std::string_view filter) {
     State& s = state();
+    ResultTable table;
+    std::vector<Record> records;
+    size_t matched = 0;
 
     beginSession();
-    std::vector<Record> records;
     for (BenchId id = 0; id < s.benches.size(); ++id) {
         const Case* bench = s.benches.get(id);
-
-        if (bench && bench->group == group)
-            execute(*bench, &records);
+        if (bench && matches(*bench, filter)) {
+            ++matched;
+            execute(*bench, &records, &table);
+        }
     }
-    compare(records, s.comparison);
+    if (!matched)
+        throw Exception<Registry>("no benchmark matches '{}'", filter);
+
+    for (const Comparison& comparison : compare(records)) {
+        if (s.comparison)
+            s.comparison(comparison);
+        for (auto& row : resultRows(comparison))
+            table.rows.push_back(std::move(row));
+    }
+    return table;
+}
+
+void runGroup(std::string_view group) {
+    for (const auto& known : groups())
+        if (known == group) {
+            runFiltered(group);
+            return;
+        }
+    throw Exception<Registry>("Benchmark group '{}' not found", group);
 }
 
 void runAll() {
-    State& s = state();
+    runFiltered({});
+}
 
-    beginSession();
-    std::vector<Record> records;
-    for (BenchId id = 0; id < s.benches.size(); ++id)
-        if (const Case* bench = s.benches.get(id))
-            execute(*bench, &records);
-    compare(records, s.comparison);
+int runMain(int argc, char** argv, std::string_view build) {
+    std::string filter;
+    std::string tsv;
+    bool listOnly = false;
+    for (int i = 1; i < argc; ++i) {
+        const std::string_view argument = argv[i];
+        auto value = [&]() -> std::string {
+            if (i + 1 >= argc)
+                throw Exception<Registry>("{} needs a value", argument);
+            return argv[++i];
+        };
+        if (argument == "--list")
+            listOnly = true;
+        else if (argument == "--filter")
+            filter = value();
+        else if (argument == "--tsv")
+            tsv = value();
+        else if (argument == "--help" || argument == "-h") {
+            Logger::message(TextFormatter::format(
+                "usage: {} [filter] [--filter <group|bench|mask>] [--tsv <file>] [--list]", argv[0]));
+            return 0;
+        } else if (!argument.starts_with("--") && filter.empty())
+            filter = std::string(argument);
+        else
+            throw Exception<Registry>("unknown argument '{}'", argument);
+    }
+
+    if (listOnly) {
+        for (const Info& info : list())
+            LogSystem::writeConsole(std::format("{}\t{}\t{}\n",
+                info.group.empty() ? std::string(info.name) : std::format("{}/{}", info.group, info.name),
+                info.group, info.description));
+        return 0;
+    }
+
+    ResultTable table = runFiltered(filter);
+    if (!tsv.empty()) {
+        std::string suite = argc ? argv[0] : "suite";
+        if (const auto slash = suite.find_last_of("/\\"); slash != std::string::npos)
+            suite = suite.substr(slash + 1);
+        table.meta = {{"suite", suite}, {"build", std::string(build)}, {"filter", filter.empty() ? "*" : filter}};
+        std::ofstream out(tsv, std::ios::binary);
+        if (!out)
+            throw Exception<Registry>("cannot write '{}'", tsv);
+        out << writeTsv(table);
+    }
+    return 0;
 }
 
 std::vector<Info> list() {

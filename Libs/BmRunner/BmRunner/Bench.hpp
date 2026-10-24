@@ -341,6 +341,7 @@ private:
 
             if (sample_)
                 sample_(sampleResult);
+            stageResult.sampleMetrics.push_back(std::move(sampleResult.capabilities));
 
             const bool samplesReached =
                 stage.sampleLimit && sample >= stage.sampleLimit;
