@@ -42,6 +42,8 @@ public:
     void reconfigure();
     /// Remember that configure of `observer` looked up `observed` outside its subtree.
     void observe(NodeId observer, NodeId observed);
+    /// Remember that configure of `observer` read the Context role `role`.
+    void observeRole(NodeId observer, RoleId role);
     void retireBranch(NodeId id);
     size_t collectRetired();
     void destroyBranch(NodeId id);
@@ -78,6 +80,7 @@ private:
     std::vector<NodeId> composing_;
     std::vector<NodeId> configured_;
     std::vector<std::pair<NodeId, NodeId>> observations_;   // observer, observed
+    std::vector<std::pair<NodeId, RoleId>> roleObservations_;   // observer, role
     bool reconfiguring_ = false;
     std::vector<std::vector<NodeId>> retiring_;
     std::vector<NodeId> destroying_;

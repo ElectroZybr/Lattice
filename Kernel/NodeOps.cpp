@@ -265,11 +265,12 @@ size_t NodeOps::collectRetired() {
 }
 
 void NodeOps::maintain() {
-    // A Context change can alter any focus lookup: reconfigure every branch.
-    if (nodeSystem_.context.pending())
-        for (NodeId id : configured_)
-            if (std::ranges::find(dirty_, id) == dirty_.end())
-                dirty_.push_back(id);
+    // A Context change reconfigures only the branches whose configure read that role;
+    // tree changes were marked when they happened.
+    for (const RoleId role : nodeSystem_.context.changedRoles())
+        for (const auto& [observer, observed] : roleObservations_)
+            if (observed == role && std::ranges::find(dirty_, observer) == dirty_.end())
+                dirty_.push_back(observer);
     // Before destruction: configured objects drop retiring nodes while they still live.
     reconfigure();
     collectRetired();
@@ -313,6 +314,14 @@ void NodeOps::observe(NodeId observer, NodeId observed) {
         observations_.push_back(entry);
 }
 
+void NodeOps::observeRole(NodeId observer, RoleId role) {
+    if (observer == InvalidNodeId || role == InvalidRoleId)
+        return;
+    const std::pair entry{observer, role};
+    if (std::ranges::find(roleObservations_, entry) == roleObservations_.end())
+        roleObservations_.push_back(entry);
+}
+
 void NodeOps::beginCompose(NodeId id) {
     composing_.push_back(id);
 }
@@ -334,6 +343,7 @@ void NodeOps::endCompose(NodeId id) {
 void NodeOps::configure(NodeId id) {
     std::erase(dirty_, id);
     std::erase_if(observations_, [id](const auto& entry) { return entry.first == id; });
+    std::erase_if(roleObservations_, [id](const auto& entry) { return entry.first == id; });
     const auto& node = nodeSystem_.registry.require(id);
     const BlueprintId composition = node.kind == NodeKind::Slot ? node.choice : node.bp;
     const auto configure = nodeSystem_.blueprints.require(composition).meta.configure;
@@ -402,6 +412,7 @@ void NodeOps::destroyBranch(NodeId id) {
     std::erase(dirty_, id);
     std::erase(configured_, id);
     std::erase_if(observations_, [id](const auto& entry) { return entry.first == id || entry.second == id; });
+    std::erase_if(roleObservations_, [id](const auto& entry) { return entry.first == id; });
     invalidate(parent);
     // Destruction outside maintain (slot replacement, rollback): rewire immediately,
     // so configured objects never keep a destroyed node.

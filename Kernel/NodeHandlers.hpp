@@ -61,6 +61,10 @@ public:
     template<class Value, class Owner> ExportId param(std::string_view name, Value Owner::* member);
     /// Export a value that lives inside this object (nested field, container element).
     template<class Value> ExportId param(std::string_view name, Value& value);
+    /// Run this object's exports (params, actions, tables) on the thread of `queue`:
+    /// `queue->call(work)` runs work there and returns when it is done. Declare it
+    /// before the exports; the object then depends on the queue's node.
+    template<class Queue> void executeOn(const ObjectBuild<Queue>& queue);
     // Methods may take ActionContext& as their first parameter.
     template<class Owner, class Result, class... Args>
     ExportId action(std::string_view name, Result (Owner::*member)(Args...));

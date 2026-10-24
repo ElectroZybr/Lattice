@@ -105,8 +105,8 @@ public:
     void observe(RoleId role, NodeId owner, uint64_t generation, std::function<void()> callback);
     /// Deliver the changes accumulated since the last call, once per changed role.
     void notifyChanges();
-    /// Changes are waiting for notifyChanges().
-    bool pending() const noexcept { return !changed_.empty(); }
+    /// Roles changed since the last notifyChanges().
+    std::span<const RoleId> changedRoles() const noexcept { return changed_; }
 
     // helpers
     ContextScopeId root() const noexcept { return rootScope_; }

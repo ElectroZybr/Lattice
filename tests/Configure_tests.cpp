@@ -229,4 +229,72 @@ TEST(Configure_FocusByObjectAndFocusId, RuntimeFixture,
     REQUIRE(view.focusId<Marker>() == first.id());
 }
 
+TEST(Configure_ContextChangeWakesOnlyReaders, RuntimeFixture,
+    "Смена Context будит только configure, читавшие эту роль; изменения дерева — по-прежнему.")
+{
+    auto& nodes = fixture.run_ctx.nodes;
+    auto& blueprints = fixture.run_ctx.blueprints;
+    static int plain;
+    plain = 0;
+    const auto type = blueprints.addComposition("ConfigurePlain",
+        +[](NodeBuild root) { root.construct<View>(); },
+        +[](NodeConfigure root) { root.self<View>()->items = root.children<Item>(); ++plain; });
+    const auto branch = nodes.builder.add(fixture.root, type, "plain");
+    const auto scene = addScene(fixture);
+    auto root = fixture.build(fixture.root);
+    const auto first = root.emplaceShared<Marker>("first", 1);
+    nodes.ops.maintain();
+    const int plainBefore = plain, sceneBefore = scene.view->configured;
+
+    const auto second = root.emplaceShared<Marker>("second", 2);
+    root.focus<Marker>(second.ref());
+    nodes.ops.maintain();
+    REQUIRE(scene.view->selected == second.get());
+    REQUIRE(scene.view->configured > sceneBefore);
+    REQUIRE(plain == plainBefore);
+
+    fixture.build(branch).emplace<Item>("new", 3);
+    nodes.ops.maintain();
+    REQUIRE(plain == plainBefore + 1);
+    (void)first;
+}
+
+namespace {
+struct Owned {
+    float value = 1.0f;
+    void bump() { value += 1.0f; }
+};
+// Stand-in for a thread's command queue: counts what ran through it.
+struct CountingQueue {
+    int calls = 0;
+    template<class F>
+    void call(F&& work) { ++calls; work(); }
+};
+}
+
+TEST(Exports_ExecuteOnRoutesThroughQueue, RuntimeFixture,
+    "executeOn: чтение, запись и вызов экспортов объекта идут через его очередь.")
+{
+    auto& exports = fixture.run_ctx.nodes.exports;
+    auto root = fixture.build(fixture.root);
+    auto queue = root.emplace<CountingQueue>("queue");
+    auto owned = root.emplace<Owned>("owned");
+    owned.executeOn(queue);
+    const auto param = owned.param("value", &Owned::value);
+    const auto action = owned.action("bump", &Owned::bump);
+    REQUIRE(fixture.run_ctx.nodes.dependencies.retained(owned.id(), queue.id()));
+
+    exports.set(param, 2.5);
+    REQUIRE(owned->value == 2.5f && queue->calls == 1);
+    REQUIRE(exports.value<double>(param) == 2.5 && queue->calls == 2);
+    exports.invoke(action);
+    REQUIRE(owned->value == 3.5f && queue->calls == 3);
+
+    auto late = root.emplace<Owned>("late");
+    late.param("value", &Owned::value);
+    bool thrown = false;
+    try { late.executeOn(queue); } catch (const ExceptionBase&) { thrown = true; }
+    REQUIRE(thrown);
+}
+
 }

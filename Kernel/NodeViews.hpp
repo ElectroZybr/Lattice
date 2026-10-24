@@ -612,8 +612,8 @@ private:
  *
  * A package may export `extern "C" void configure(NodeConfigure root)` next to compose
  * (a slot variant passes it to choice). The runtime calls it after compose and again
- * in maintain when the branch subtree changes, a node it looked up retires, or Context
- * changes. It only queries and assigns plain values to objects: it never creates nodes.
+ * in maintain when the branch subtree changes, a node it looked up retires, or a Context
+ * role it read (focus/focusId) changes. It only queries and assigns plain values to objects: it never creates nodes.
  * Results are not dependencies: a retiring child is dropped by the next configure
  * (before it is destroyed) instead of retiring its consumer.
  */
@@ -687,9 +687,8 @@ public:
     /// Current Context choice for this node: nullptr when missing, error when ambiguous.
     template<class T>
     T* focus(std::string_view role = Lattice::typeKey<T>()) const {
-        const auto roleId = nodeSystem_->context.findRole(role);
-        if (roleId == Lattice::InvalidRoleId)
-            return nullptr;
+        const auto roleId = nodeSystem_->context.role(role);
+        nodeSystem_->ops.observeRole(observer_, roleId);
         const auto resolution = nodeSystem_->context.resolveInfo(nodeSystem_->context.nearestScope(id_), roleId);
         if (resolution.state == Lattice::ContextResolutionState::Ambiguous)
             throw Lattice::Exception<NodeConfigure>("Context role '{}' is ambiguous ({} candidates)",
@@ -702,9 +701,8 @@ public:
     /// Node of the current Context choice: InvalidNodeId when missing, error when ambiguous.
     template<class T>
     Lattice::NodeId focusId(std::string_view role = Lattice::typeKey<T>()) const {
-        const auto roleId = nodeSystem_->context.findRole(role);
-        if (roleId == Lattice::InvalidRoleId)
-            return Lattice::InvalidNodeId;
+        const auto roleId = nodeSystem_->context.role(role);
+        nodeSystem_->ops.observeRole(observer_, roleId);
         const auto resolution = nodeSystem_->context.resolveInfo(nodeSystem_->context.nearestScope(id_), roleId);
         if (resolution.state == Lattice::ContextResolutionState::Ambiguous)
             throw Lattice::Exception<NodeConfigure>("Context role '{}' is ambiguous ({} candidates)",
@@ -996,6 +994,20 @@ template<class Value>
 ExportId ObjectBuild<T>::param(std::string_view name, Value& value) {
     auto object = ref();
     return ::NodeBuild{object.id(), *object.runtime()}.param(name, value);
+}
+
+template<class T>
+template<class Queue>
+void ObjectBuild<T>::executeOn(const ObjectBuild<Queue>& queue) {
+    auto object = ref();
+    auto target = queue.ref();
+    detail::resolveHandle(target, *object.runtime());
+    // The object's exports run through the queue: it must outlive them.
+    object.runtime()->dependencies.retain(object.id(), target.id());
+    Queue* commands = target.get();
+    object.runtime()->exports.executeOn(object.id(), [commands](const std::function<void()>& work) {
+        commands->call([&work] { work(); });
+    });
 }
 
 template<class T>

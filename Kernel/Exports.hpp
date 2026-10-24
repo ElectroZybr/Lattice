@@ -1,5 +1,7 @@
 #pragma once
 
+#include <memory>
+
 #include <functional>
 #include <optional>
 #include <span>
@@ -152,6 +154,23 @@ class Exports {
     std::vector<Export> exports_;
     std::vector<Param> params_;
     std::vector<Action> actions_;
+public:
+    /// Runs work on the thread that owns an object's state and returns once it is done.
+    using Executor = std::function<void(const std::function<void()>&)>;
+
+private:
+    // Params of an object with an executor: the plain param the dispatch runs.
+    struct Dispatched {
+        Param param;
+        const Executor* executor = nullptr;
+    };
+    std::unordered_map<ExportId, std::unique_ptr<Dispatched>> dispatched_;
+    std::unordered_map<NodeId, Executor> executors_;
+
+    const Executor* executor(NodeId owner) const {
+        const auto it = executors_.find(owner);
+        return it == executors_.end() ? nullptr : &it->second;
+    }
 
     std::unordered_map<ExportKey, ExportId, ExportKeyHash> index_;
     std::unordered_map<uint64_t, std::function<void(ExportId, ParamChange)>> observers_;
@@ -186,8 +205,31 @@ public:
         notify(id, ParamChange::Reset);
     }
 
+    /// Read, write and call every export of `owner` through `executor`: on the thread
+    /// that owns the object's state. A write returns once applied, so observers and a
+    /// later save see the new value. Declare it before the object's exports.
+    void executeOn(NodeId owner, Executor executor) {
+        for (const auto& entry : exports_)
+            if (entry.owner == owner)
+                throw Exception<Exports>("executeOn for node #{} must precede its exports ('{}')", owner, entry.name);
+        executors_.insert_or_assign(owner, std::move(executor));
+    }
+
     template<typename T>
     ExportId param(NodeId owner, std::string_view name, T& value) {
+        return addParam(owner, name, {
+            .object = &value,
+            .get = [](const void* object) -> Value {
+                return ParamAdapter<T>::get(*static_cast<const T*>(object));
+            },
+            .set = [](void* object, const Value& value) {
+                ParamAdapter<T>::set(*static_cast<T*>(object), value);
+            }
+        });
+    }
+
+private:
+    ExportId addParam(NodeId owner, std::string_view name, Param param) {
         const ExportKey key{owner, std::string(name)};
 
         if (index_.contains(key))
@@ -200,23 +242,31 @@ public:
             .name = std::string(name),
             .kind = ExportKind::Param
         });
-
-        params_.push_back({
-            .object = &value,
-            .get = [](const void* object) -> Value {
-                return ParamAdapter<T>::get(*static_cast<const T*>(object));
-            },
-            .set = [](void* object, const Value& value) {
-                ParamAdapter<T>::set(*static_cast<T*>(object), value);
-            }
-        });
-
+        if (const Executor* run = executor(owner)) {
+            auto dispatch = std::make_unique<Dispatched>(Dispatched{param, run});
+            param = {
+                .object = dispatch.get(),
+                .get = [](const void* object) -> Value {
+                    const auto& self = *static_cast<const Dispatched*>(object);
+                    Value result;
+                    (*self.executor)([&] { result = self.param.get(self.param.object); });
+                    return result;
+                },
+                .set = [](void* object, const Value& value) {
+                    const auto& self = *static_cast<const Dispatched*>(object);
+                    (*self.executor)([&] { self.param.set(self.param.object, value); });
+                }
+            };
+            dispatched_.emplace(id, std::move(dispatch));
+        }
+        params_.push_back(param);
         actions_.push_back({});
         index_.emplace(key, id);
 
         return id;
     }
 
+public:
     template<typename... Args, typename F>
     ExportId action(NodeId owner, std::string_view name, F&& callback) {
         static_assert(
@@ -267,6 +317,11 @@ public:
             .argumentTypes = {argumentType<Args>()...},
             .requiredArguments = requiredArgumentCount<Args...>()
         });
+        if (const Executor* run = executor(owner))
+            actions_.back().invoke = [run, invoke = std::move(actions_.back().invoke)](
+                ActionContext& context, std::span<const Value> arguments) mutable {
+                (*run)([&] { invoke(context, arguments); });
+            };
 
         index_.emplace(key, id);
 
@@ -373,6 +428,12 @@ public:
         std::erase_if(index_, [owner](const auto& item) {
             return item.first.owner == owner;
         });
+        // Exports go first (below); the executor is not used by anything after that.
+        struct DropExecutor {
+            std::unordered_map<NodeId, Executor>& executors;
+            NodeId owner;
+            ~DropExecutor() { executors.erase(owner); }
+        } dropExecutor{executors_, owner};
 
         for (ExportId id = 0; id < exports_.size(); ++id) {
             if (exports_[id].owner != owner)
@@ -382,6 +443,7 @@ public:
             exports_[id].owner = InvalidNodeId;
             params_[id] = {};
             actions_[id] = {};
+            dispatched_.erase(id);
             if (parameter) notify(id, ParamChange::Remove);
         }
     }
