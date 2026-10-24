@@ -50,21 +50,24 @@ lattice-bmrunner-results/
   схема. Двоичные форматы отвергнуты: в git их не прочитать и не сравнить.
 
 ```text
-group  bench         work       executor  mode      n        stage        metric                 value    samples          measured
-Walls  Constrain     Constrain  cpu       resident  1000000  Time|Phases  Time.median            4.734e7  4.73e7,4.74e7,…  r0012
-Walls  ConstrainGpu  Constrain  gpu       resident  1000000  Time|Phases  Execute:constrain@dev  6.11e6   6.10e6,6.12e6,…  r0012
-Walls  ConstrainGpu  Constrain  gpu       resident  -        analysis     Execute@dev.per        6.45     -                r0012
+group  bench      implementation  params      n        stage        metric                 value    samples          measured
+Walls  Constrain  cpu             workers=1   1000000  Time|Phases  Time.median            4.734e7  4.73e7,4.74e7,…  r0012
+Walls  Constrain  cpu             workers=16  1000000  Time|Phases  Time.median            3.912e6  3.90e6,3.93e6,…  r0012
+Walls  Constrain  gpu             -           1000000  Time|Phases  Execute:constrain@dev  5.20e6   5.19e6,5.21e6,…  r0012
+Walls  Constrain  gpu             -           -        compare      crossover:cpu×16       9800     -                r0012
 ```
 
-* Строки отсортированы по `group`, `bench`, `n`, `stage`, `metric`: порядок стабилен,
+* Бенч — работа, `implementation` и `params` — её вариант (`cpu`, `workers=16`).
+* Строки отсортированы по `group`, `bench`, `implementation`, `params`, `n`, `stage`,
+  `metric`: порядок стабилен,
   diff показывает только изменения. Единицы — в имени метрики или в заголовке схемы
   (нс, байты, Б/с); числа — с фиксированным числом значащих цифр.
 * **Семплы** — в колонке `samples` через запятую: без них статистика не отличит
   деградацию от шума. Сводки capability с одним рядом семплов (`Time.min`, `median`,
   `mean`, `perOperation` по `time`) несут семплы этого ряда. Анализ (`fixed`/`per`, рост, `N*` из `Compare`) — строки со стадией
   `analysis`/`compare` и `n = -`.
-* **Частичный запуск** (`lbm run Boundaries.bench Walls`) переписывает только строки
-  запущенных бенчей, остальные остаются. Колонка `measured` — номер запуска, в котором
+* **Частичный запуск** (`lbm run Boundaries Walls`) переписывает только строки
+  запущенных работ (все их варианты и сравнение), остальные остаются. Колонка `measured` — номер запуска, в котором
   строка измерена: неизменная строка значит «не перезапускали», а не «то же значение».
 * **Коммит = один сохранённый запуск.** Время запуска и окружение — в сообщении коммита,
   не в файле. Трейлеры `lbm` читает через `git log --format=%(trailers)`:

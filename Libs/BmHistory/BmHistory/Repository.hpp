@@ -85,9 +85,8 @@ private:
     Git git_;
 };
 
-/// Merge a partial run into the saved table: rows of the benches the run measured
-/// (and the comparisons of the works it touched) are replaced; `measured` of the new
-/// rows is `run`.
+/// Merge a partial run into the saved table: rows of the works the run measured (every
+/// variant and their comparison) are replaced; `measured` of the new rows is `run`.
 Benchmarks::ResultTable mergeRun(const Benchmarks::ResultTable& saved, const Benchmarks::ResultTable& run,
                                  std::string_view runId);
 

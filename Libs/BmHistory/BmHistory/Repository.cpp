@@ -89,25 +89,16 @@ std::string Repository::tablePath(std::string_view machine, std::string_view sui
 
 Benchmarks::ResultTable mergeRun(const Benchmarks::ResultTable& saved, const Benchmarks::ResultTable& run,
                                  std::string_view runId) {
-    // Benches the run measured, and the works (with mode) whose comparison it redid.
-    std::set<std::pair<std::string, std::string>> benches;
-    std::set<std::tuple<std::string, std::string, std::string>> works;
-    for (const auto& row : run.rows) {
-        if (row.bench != "-")
-            benches.insert({row.group, row.bench});
-        if (row.work != "-")
-            works.insert({row.group, row.work, row.mode});
-    }
+    // Works the run measured: their rows (every variant and the comparison) are replaced.
+    std::set<std::pair<std::string, std::string>> works;
+    for (const auto& row : run.rows)
+        works.insert({row.group, row.bench});
 
     Benchmarks::ResultTable merged;
     merged.meta = run.meta;
-    for (const auto& row : saved.rows) {
-        const bool replaced = row.bench == "-"
-            ? works.contains({row.group, row.work, row.mode})
-            : benches.contains({row.group, row.bench});
-        if (!replaced)
+    for (const auto& row : saved.rows)
+        if (!works.contains({row.group, row.bench}))
             merged.rows.push_back(row);
-    }
     for (auto row : run.rows) {
         row.measured = std::string(runId);
         merged.rows.push_back(std::move(row));
@@ -143,8 +134,7 @@ RunInfo Repository::save(const SaveRequest& request) {
 
     std::set<std::pair<std::string, std::string>> benches;
     for (const auto& row : request.table.rows)
-        if (row.bench != "-")
-            benches.insert({row.group, row.bench});
+        benches.insert({row.group, row.bench});
     std::string message = request.message.empty()
         ? std::format("lbm: {} ({} bench{}), {}", request.suite, benches.size(), benches.size() == 1 ? "" : "es", runId)
         : std::format("{}, {}", request.message, runId);

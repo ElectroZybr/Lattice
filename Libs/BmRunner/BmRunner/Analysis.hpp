@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <format>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -70,34 +71,46 @@ struct AnalysisResult {
     }
 };
 
-/// Режим сравнения исполнителей: данные уже у исполнителя (горячий кеш на CPU) или
-/// полная цена с переносом (холодный кеш). Сравниваются только бенчи одного режима.
-enum class Mode : uint8_t {
-    Default,
-    Resident,
-    Offload
+/// Значение оси параметров исполнения (`workers`, `batch`) у варианта реализации.
+struct ParameterValue {
+    std::string name;
+    double value = 0;
 };
 
-constexpr std::string_view modeName(Mode mode) noexcept {
-    switch (mode) {
-        case Mode::Default:  return "";
-        case Mode::Resident: return "resident";
-        case Mode::Offload:  return "offload";
+/// Имя варианта: реализация и её параметры — `cpu` (один поток), `cpu×16` (workers),
+/// `gpu[batch=4]`.
+inline std::string variantLabel(std::string_view implementation, const std::vector<ParameterValue>& params) {
+    std::string label(implementation);
+    for (const auto& param : params) {
+        const auto value = std::format("{}", param.value);
+        if (param.name == "workers")
+            label += param.value == 1 ? "" : "×" + value;   // one thread: just `cpu`
+        else
+            label += "[" + param.name + "=" + value + "]";
     }
-    return "";
+    return label;
+}
+
+/// `workers=16 batch=4`: параметры по имени; пусто — `-`.
+inline std::string parametersText(const std::vector<ParameterValue>& params) {
+    std::string text;
+    for (const auto& param : params)
+        text += std::format("{}{}={}", text.empty() ? "" : " ", param.name, param.value);
+    return text;
 }
 
 struct BenchResult {
-    std::string name;
+    std::string name;    // работа (Walls/SoftForces → SoftForces)
     std::string group;
     std::vector<PointResult> points;
     std::vector<AnalysisResult> analysis;
 
-    // Идентичность для сравнения исполнителей: одна работа (work) на разных executor.
-    // Копии: результат живёт дольше бенча.
-    std::string executor;
-    std::string work;
-    Mode mode = Mode::Default;
+    // Вариант: реализация работы и значения осей исполнения. Пустая реализация —
+    // работа с одной реализацией (`measure`), она не сравнивается.
+    std::string implementation;
+    std::vector<ParameterValue> params;
+
+    std::string label() const { return variantLabel(implementation, params); }
 };
 
 /// Подгонка y = fixed + per·x по точкам (относительные МНК: вес 1/y²).

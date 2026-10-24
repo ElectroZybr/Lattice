@@ -38,7 +38,7 @@ std::vector<double> noisy(double center, double spread, size_t count, std::mt199
 
 Benchmarks::ResultRow row(std::string bench, std::string n, std::vector<double> samples) {
     const double value = median(samples);
-    return {.group = "G", .bench = std::move(bench), .work = "-", .executor = "-", .mode = "-", .n = std::move(n),
+    return {.group = "G", .bench = std::move(bench), .implementation = "-", .params = "-", .n = std::move(n),
             .stage = "Time", .metric = "Time.median", .value = value, .samples = std::move(samples), .measured = "-"};
 }
 

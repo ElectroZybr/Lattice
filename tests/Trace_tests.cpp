@@ -142,24 +142,22 @@ BENCH_GROUP(TraceCompare) {
     bench.stages.add<Benchmarks::Time>().samples(5);
 }
 
-BENCH_GROUPED(TraceCompare, SpinCpu, LinearWork) {
-    bench.work("Spin").executor("cpu");
-    bench.measure<LinearWork>([](LinearWork& work, Benchmarks::Trace& trace) {
-        auto execute = trace.span(Benchmarks::Phase::Execute);
-        spin(CpuFixed + CpuPer * work.n);
-    });
-}
-
-BENCH_GROUPED(TraceCompare, SpinGpu, LinearWork) {
-    bench.work("Spin").executor("gpu");
-    bench.measure<LinearWork>([](LinearWork& work, Benchmarks::Trace& trace) {
+// One work, three variants: cpu with one and two workers, gpu.
+BENCH_GROUPED(TraceCompare, Spin, LinearWork) {
+    bench.implementation<LinearWork>("cpu", [&bench](LinearWork& work, Benchmarks::Trace& trace) {
+             auto execute = trace.span(Benchmarks::Phase::Execute);
+             const double workers = bench.parameter("workers");
+             spin(CpuFixed + std::chrono::nanoseconds(int64_t(double(CpuPer.count()) * double(work.n) / workers)));
+         })
+         .axis("workers", {1, 2});
+    bench.implementation<LinearWork>("gpu", [](LinearWork& work, Benchmarks::Trace& trace) {
         auto execute = trace.span(Benchmarks::Phase::Execute);
         spin(GpuFixed + GpuPer * work.n);
     });
 }
 
-TEST(Trace_ComparesExecutors, Fixture,
-    "BmRunner должен подгонять fixed + per·N по фазам и находить порог N* между исполнителями.") {
+TEST(Trace_ComparesImplementations, Fixture,
+    "Реализации одной работы с осями должны сравниваться: подгонка fixed + per·N и пороги N*.") {
     std::vector<Benchmarks::Comparison> comparisons;
     std::vector<Benchmarks::BenchResult> results;
     Benchmarks::disableSampleCallback();
@@ -168,7 +166,11 @@ TEST(Trace_ComparesExecutors, Fixture,
     Benchmarks::setComparisonCallback([&](const Benchmarks::Comparison& comparison) { comparisons.push_back(comparison); });
 
     Benchmarks::runGroup("TraceCompare");
-    REQUIRE(results.size() == 2 && results[0].executor == "cpu" && results[0].work == "Spin");
+    REQUIRE(results.size() == 3);
+    REQUIRE(results[0].name == "Spin" && results[0].implementation == "cpu" && results[0].label() == "cpu");
+    REQUIRE(results[1].label() == "cpu×2" && results[1].params.size() == 1 && results[1].params[0].value == 2);
+    REQUIRE(results[2].label() == "gpu" && results[2].params.empty());
+    REQUIRE(results[1].points.front().name == "Spin/cpu×2");
 
     // Фаза Execute подогнана прямой: задержка и цена на элемент.
     const Benchmarks::AnalysisResult* execute = nullptr;
@@ -182,10 +184,18 @@ TEST(Trace_ComparesExecutors, Fixture,
 
     REQUIRE(comparisons.size() == 1);
     const auto& comparison = comparisons[0];
-    REQUIRE(comparison.work == "Spin" && comparison.executors.size() == 2);
-    REQUIRE(comparison.crossovers.size() == 1 && comparison.crossovers[0].faster == "gpu");
-    // N* = (20 мкс − 1 мкс) / (100 нс − 10 нс) ≈ 211.
-    REQUIRE(std::abs(comparison.crossovers[0].n - 211.0) < 211.0 * 0.15);
+    REQUIRE(comparison.work == "Spin" && comparison.executors.size() == 3 && comparison.crossovers.size() == 3);
+    auto threshold = [&](std::string_view faster, std::string_view slower) {
+        for (const auto& crossover : comparison.crossovers)
+            if (crossover.faster == faster && crossover.slower == slower)
+                return crossover.n;
+        return -1.0;
+    };
+    // N* = (20 мкс − 1 мкс) / (100 нс − 10 нс) ≈ 211; с двумя потоками — / (50 − 10) ≈ 475;
+    // у двух потоков та же задержка и меньше цена на элемент — быстрее везде.
+    REQUIRE(std::abs(threshold("gpu", "cpu") - 211.0) < 211.0 * 0.15);
+    REQUIRE(std::abs(threshold("gpu", "cpu×2") - 475.0) < 475.0 * 0.15);
+    REQUIRE(threshold("cpu×2", "cpu") >= 0 && threshold("cpu×2", "cpu") < 50);
 
     Benchmarks::disableCallbacks();
 }

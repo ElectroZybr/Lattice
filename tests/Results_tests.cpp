@@ -9,10 +9,10 @@ namespace Lattice {
 
 namespace {
 
-const Benchmarks::ResultRow* findRow(const Benchmarks::ResultTable& table, std::string_view bench,
+const Benchmarks::ResultRow* findRow(const Benchmarks::ResultTable& table, std::string_view implementation,
                                      std::string_view metric, std::string_view n = {}) {
     for (const auto& row : table.rows)
-        if (row.bench == bench && row.metric == metric && (n.empty() || row.n == n))
+        if (row.implementation == implementation && row.metric == metric && (n.empty() || row.n == n))
             return &row;
     return nullptr;
 }
@@ -22,23 +22,23 @@ const Benchmarks::ResultRow* findRow(const Benchmarks::ResultTable& table, std::
 TEST(Results_RowsOfARun, Fixture,
     "Запуск по фильтру должен давать строки метрик с семплами, анализа и сравнения исполнителей.") {
     Benchmarks::disableCallbacks();
-    const auto table = Benchmarks::runFiltered("TraceCompare/Spin*");
+    const auto table = Benchmarks::runFiltered("TraceCompare/Spin");
 
     // Метрика стадии с семплами: по одному значению на семпл.
-    const auto* execute = findRow(table, "SpinCpu", "Phases.Execute", "1000");
+    const auto* execute = findRow(table, "cpu", "Phases.Execute", "1000");
     REQUIRE(execute != nullptr && execute->samples.size() == 5 && execute->stage == "Time|Phases");
-    REQUIRE(execute->work == "Spin" && execute->executor == "cpu" && execute->mode == "-");
+    REQUIRE(execute->bench == "Spin" && execute->params == "workers=1");
     // Ряд семплов без итоговой метрики: значение — медиана.
-    const auto* time = findRow(table, "SpinGpu", "Time.time", "100");
+    const auto* time = findRow(table, "gpu", "Time.time", "100");
     REQUIRE(time != nullptr && time->samples.size() == 5);
     // Сводки Time — статистики того же ряда: семплы общие.
-    const auto* timeMedian = findRow(table, "SpinGpu", "Time.median", "100");
+    const auto* timeMedian = findRow(table, "gpu", "Time.median", "100");
     REQUIRE(timeMedian != nullptr && timeMedian->samples == time->samples);
     // Анализ и сводка исполнителей — строки с n = '-'.
-    const auto* per = findRow(table, "SpinCpu", "Phases.Execute(N).per");
+    const auto* per = findRow(table, "cpu", "Phases.Execute(N).per");
     REQUIRE(per != nullptr && per->n == "-" && per->stage == "analysis" && std::abs(per->value - 100.0) < 10.0);
-    const auto* crossover = findRow(table, "-", "crossover:cpu");
-    REQUIRE(crossover != nullptr && crossover->executor == "gpu" && crossover->stage == "compare");
+    const auto* crossover = findRow(table, "gpu", "crossover:cpu");
+    REQUIRE(crossover != nullptr && crossover->bench == "Spin" && crossover->stage == "compare");
 
     bool unknown = false;
     try {
@@ -50,16 +50,31 @@ TEST(Results_RowsOfARun, Fixture,
     Benchmarks::resetCallbacks();
 }
 
+TEST(Results_ReadsTheFirstFormat, Fixture,
+    "Таблица первого формата (work/executor/mode) должна читаться как варианты одной работы.") {
+    const auto table = Benchmarks::parseTsv(
+        "group\tbench\twork\texecutor\tmode\tn\tstage\tmetric\tvalue\tsamples\tmeasured\n"
+        "Walls\tConstrainGpu\tConstrain\tgpu\tresident\t1000\tTime\tTime.median\t5\t4,5,6\tr0001\n"
+        "Walls\tConstrainCold\tConstrain\tcpu\toffload\t1000\tTime\tTime.median\t7\t-\tr0001\n"
+        "Space\tWrapColumns\tWrapColumns\t-\t-\t1000\tTime\tTime.median\t2\t-\tr0001\n");
+    REQUIRE(table.rows.size() == 3);
+    const auto& gpu = table.rows[0];
+    REQUIRE(gpu.bench == "Constrain" && gpu.implementation == "gpu" && gpu.params == "-" && gpu.samples.size() == 3);
+    const auto& cold = table.rows[1];
+    REQUIRE(cold.bench == "ConstrainOffload" && cold.implementation == "cpu" && cold.params == "workers=1");
+    REQUIRE(table.rows[2].bench == "WrapColumns" && table.rows[2].implementation == "-" && table.rows[2].measured == "r0001");
+}
+
 TEST(Results_TsvRoundTrip, Fixture,
     "TSV должен сохранять метаданные, строки и семплы и сортировать строки стабильно.") {
     Benchmarks::ResultTable table;
     table.meta = {{"suite", "Demo.bench"}, {"build", "release, gcc 15.2.1, x86_64"}};
     table.rows = {
-        {.group = "G", .bench = "B", .work = "W", .executor = "gpu", .mode = "resident", .n = "1000",
+        {.group = "G", .bench = "B", .implementation = "gpu", .params = "-", .n = "1000",
          .stage = "Time", .metric = "Time.median", .value = 1234.5678, .samples = {1.5, 2.25, 1e9}, .measured = "r0002"},
-        {.group = "G", .bench = "B", .work = "W", .executor = "gpu", .mode = "resident", .n = "10",
+        {.group = "G", .bench = "B", .implementation = "gpu", .params = "-", .n = "10",
          .stage = "Time", .metric = "Time.median", .value = std::nan(""), .measured = "-"},
-        {.group = "A", .bench = "-", .work = "W", .executor = "cpu", .mode = "-", .n = "-",
+        {.group = "A", .bench = "W", .implementation = "cpu×16", .params = "-", .n = "-",
          .stage = "compare", .metric = "per", .value = 0.125, .measured = "r0001"},
     };
     const std::string text = Benchmarks::writeTsv(table);

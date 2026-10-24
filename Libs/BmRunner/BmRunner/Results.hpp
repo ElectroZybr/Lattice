@@ -15,19 +15,19 @@ namespace Lattice::Benchmarks {
  @file Results.hpp
  @brief Результаты запуска как таблица: строка на значение метрики, формат TSV.
 
- Длинный вид: `group bench work executor mode n stage metric value samples measured`.
+ Длинный вид: `group bench implementation params n stage metric value samples measured`.
  Новая метрика, фаза или стадия — новые строки, а не новая схема; построчный diff
- показывает, какое значение какого бенча изменилось. Анализ — строки со стадией
- `analysis`, сводка исполнителей — `compare`; у них `n` = `-`.
+ показывает, какое значение какого бенча изменилось. Бенч — работа, реализация и её
+ параметры (`workers=16`) — вариант этой работы. Анализ — строки со стадией `analysis`,
+ сводка вариантов — `compare` (реализация — имя варианта, `cpu×16`); у них `n` = `-`.
 */
 
 struct ResultRow {
     std::string group;
-    std::string bench;      // `-` у строк сравнения исполнителей
-    std::string work;
-    std::string executor;   // `-`, если бенч не участвует в сравнении
-    std::string mode;       // `-` для Mode::Default
-    std::string n;          // число или `-`
+    std::string bench;            // работа
+    std::string implementation;   // `-` у работы с одной реализацией
+    std::string params;           // `workers=16 batch=4`, `-` без осей
+    std::string n;                // число или `-`
     std::string stage;      // имя стадии, `analysis`, `compare`
     std::string metric;     // `Capability.name`, у анализа `y(x).value`
     double value = 0;
@@ -51,12 +51,12 @@ struct ResultTable {
 /// Строки результата бенча: метрики стадий с семплами, ряды семплов без итоговой
 /// метрики (медиана как значение), числовые значения анализа.
 BMRUNNER_API std::vector<ResultRow> resultRows(const BenchResult& result);
-/// Строки сводки исполнителей: подгонка каждого и пороги `crossover:<slower>`.
+/// Строки сводки вариантов работы: подгонка каждого и пороги `crossover:<slower>`.
 BMRUNNER_API std::vector<ResultRow> resultRows(const Comparison& comparison);
 
 /// Ключ строки без значения: по нему сливаются и сравниваются таблицы.
 BMRUNNER_API std::string rowKey(const ResultRow& row);
-/// Стабильный порядок: group, bench, n (числом), stage, metric, executor.
+/// Стабильный порядок: group, bench, implementation, params, n (числом), stage, metric.
 BMRUNNER_API void sortRows(std::vector<ResultRow>& rows);
 
 /// TSV со стабильным порядком строк и 7 значащими цифрами.

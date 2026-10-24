@@ -40,14 +40,14 @@ struct State {
     ResultCallback result = Output::result;
     CompleteCallback complete = Output::complete;
     ComparisonCallback comparison = Output::comparison;
+    std::vector<std::string> swept;   // axes of --sweep
 };
 
-/// Полное время работы на исполнителе по N — для сводки сравнения.
+/// Полное время варианта работы по N — для сводки сравнения.
 struct Record {
     std::string group;
     std::string work;
-    Mode mode;
-    std::string executor;
+    std::string variant;
     std::vector<ComplexityPoint> total;
 };
 
@@ -76,16 +76,15 @@ std::vector<Comparison> compare(const std::vector<Record>& records) {
         Comparison comparison{
             .group = records[i].group,
             .work = records[i].work,
-            .mode = std::string(modeName(records[i].mode))
         };
         for (size_t j = i; j < records.size(); ++j) {
             const Record& record = records[j];
-            if (record.group != records[i].group || record.work != records[i].work || record.mode != records[i].mode)
+            if (record.group != records[i].group || record.work != records[i].work)
                 continue;
             done[j] = true;
             const AffineFit fit = fitAffine(record.total);
             if (fit.valid)
-                comparison.executors.push_back({record.executor, fit.fixed, fit.per, fit.error});
+                comparison.executors.push_back({record.variant, fit.fixed, fit.per, fit.error});
         }
         if (comparison.executors.size() < 2)
             continue;
@@ -140,12 +139,11 @@ void execute(const Case& benchCase, std::vector<Record>* records = nullptr, Resu
         if (table)
             for (auto& row : resultRows(result))
                 table->rows.push_back(std::move(row));
-        if (records && !result.executor.empty())
+        if (records && !result.implementation.empty())
             records->push_back({
-                .group = std::string(result.group),
-                .work = result.work,
-                .mode = result.mode,
-                .executor = result.executor,
+                .group = result.group,
+                .work = result.name,
+                .variant = result.label(),
                 .total = totalTime(result)
             });
     };
@@ -264,6 +262,11 @@ void runAll() {
     runFiltered({});
 }
 
+bool sweeping(std::string_view axis) {
+    const auto& swept = state().swept;
+    return std::ranges::find(swept, axis) != swept.end();
+}
+
 int runMain(int argc, char** argv, std::string_view build) {
     std::string filter;
     std::string tsv;
@@ -281,9 +284,11 @@ int runMain(int argc, char** argv, std::string_view build) {
             filter = value();
         else if (argument == "--tsv")
             tsv = value();
+        else if (argument == "--sweep")
+            state().swept.push_back(value());
         else if (argument == "--help" || argument == "-h") {
             Logger::message(TextFormatter::format(
-                "usage: {} [filter] [--filter <group|bench|mask>] [--tsv <file>] [--list]", argv[0]));
+                "usage: {} [filter] [--filter <group|bench|mask>] [--tsv <file>] [--sweep <axis>] [--list]", argv[0]));
             return 0;
         } else if (!argument.starts_with("--") && filter.empty())
             filter = std::string(argument);

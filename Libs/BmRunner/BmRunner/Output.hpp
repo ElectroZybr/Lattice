@@ -418,9 +418,7 @@ inline TextFormatter analysisLine(
 }
 
 inline void comparison(const Comparison& comparison) {
-    const std::string title = comparison.mode.empty()
-        ? fullName(comparison.group, comparison.work)
-        : std::format("{} [{}]", fullName(comparison.group, comparison.work), comparison.mode);
+    const std::string title = fullName(comparison.group, comparison.work);
     Logger::message(TextFormatter::format("<a2><b>{:<10}<//> <light><b>{}<//>", "Compare", title));
 
     for (const ExecutorFit& fit : comparison.executors)

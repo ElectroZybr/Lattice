@@ -103,11 +103,39 @@ bool glob(std::string_view mask, std::string_view text) {
     return !text.empty() && (mask.front() == '?' || mask.front() == text.front()) && glob(mask.substr(1), text.substr(1));
 }
 
-/// A bench filter as BmRunner understands it: group, bench or mask over group/bench.
+/// Name of a row's variant: `cpu`, `cpu×16`, `gpu[batch=4]`; empty for a work with one
+/// implementation. Comparison rows already hold the variant's name.
+std::string variantOf(const Bmr::ResultRow& row) {
+    if (row.implementation == "-")
+        return {};
+    std::string label = row.implementation;
+    if (row.params == "-")
+        return label;
+    size_t at = 0;
+    while (at < row.params.size()) {
+        const size_t end = std::min(row.params.find(' ', at), row.params.size());
+        const std::string pair = row.params.substr(at, end - at);
+        at = end + 1;
+        const size_t equals = pair.find('=');
+        if (equals == std::string::npos)
+            continue;
+        const std::string name = pair.substr(0, equals), value = pair.substr(equals + 1);
+        if (name == "workers")
+            label += value == "1" ? "" : "×" + value;
+        else
+            label += "[" + pair + "]";
+    }
+    return label;
+}
+
+/// A bench filter as BmRunner understands it: group, work or mask over
+/// group/work[/variant].
 bool benchMatches(const Bmr::ResultRow& row, std::string_view filter) {
-    if (filter.empty() || filter == row.group || filter == row.bench || filter == row.work)
+    if (filter.empty() || filter == row.group || filter == row.bench)
         return true;
-    return glob(filter, row.group + "/" + (row.bench == "-" ? row.work : row.bench));
+    const std::string work = row.group + "/" + row.bench;
+    const std::string variant = variantOf(row);
+    return glob(filter, work) || (!variant.empty() && glob(filter, work + "/" + variant));
 }
 
 /// Units are not stored in the table: they follow from the metric's name.
@@ -132,13 +160,10 @@ std::string value(const Bmr::ResultRow& row, double number) {
     return Bmr::Output::formatValue(number, unitOf(row));
 }
 
+/// `group/work[/variant]`.
 std::string rowName(const Bmr::ResultRow& row) {
-    std::string name = row.group + "/" + (row.bench == "-" ? row.work : row.bench);
-    if (row.bench == "-" && row.executor != "-")
-        name += " [" + row.executor + "]";
-    if (row.mode != "-")
-        name += " (" + row.mode + ")";
-    return name;
+    const std::string variant = variantOf(row);
+    return row.group + "/" + row.bench + (variant.empty() ? "" : "/" + variant);
 }
 
 /// Text without terminal colour codes.
@@ -459,8 +484,115 @@ struct Tally {
     size_t faster = 0, slower = 0, same = 0, noisy = 0, fresh = 0;
 };
 
-/// Time per bench and N against a reference: one row per point, the bench named once,
-/// the change coloured by significance. Returns the tally.
+/// A row's change against the reference: coloured Δ, its mark and the tally it adds to.
+struct Change {
+    bool found = false;
+    double reference = 0;
+    Cell delta, mark;
+    std::string_view style = "light";   // colour of the time itself in the side-by-side view
+    bool changed = false;
+};
+
+Change changeOf(const Bmr::ResultRow& row, const std::map<std::string, const Bmr::ResultRow*>& before,
+                const Bh::Thresholds& thresholds, Tally& tally) {
+    Change change;
+    const auto it = before.find(Bmr::rowKey(row));
+    if (it == before.end()) {
+        ++tally.fresh;
+        change.delta = {"new", "mut"};
+        return change;
+    }
+    const auto& old = *it->second;
+    const auto shift = Bh::shift(old.value, old.samples, row.value, row.samples, thresholds);
+    change.found = true;
+    change.reference = old.value;
+    change.delta = {std::format("{:+.1f}%", (shift.ratio - 1) * 100), "mut"};
+    if (shift.significant && shift.ratio > 1) {
+        change.delta.style = change.style = "err";
+        change.mark = {"▼", "err"};
+        change.changed = true;
+        ++tally.slower;
+    } else if (shift.significant) {
+        change.delta.style = change.style = "ok";
+        change.mark = {"▲", "ok"};
+        change.changed = true;
+        ++tally.faster;
+    } else if (shift.noisy) {
+        change.mark = {"~", "mut"};
+        ++tally.noisy;
+    } else {
+        ++tally.same;
+    }
+    return change;
+}
+
+/// Works with several variants side by side: a row per N, a column per variant (time
+/// coloured by its change against the reference), the best variant, the thresholds.
+void sideBySide(const std::string& work, const std::vector<const Bmr::ResultRow*>& rows,
+                const std::vector<const Bmr::ResultRow*>& comparison,
+                const std::map<std::string, const Bmr::ResultRow*>& before, const Bh::Thresholds& thresholds,
+                bool changedOnly, Tally& tally) {
+    std::vector<std::string> variants;
+    std::vector<std::string> sizes;
+    std::map<std::pair<std::string, std::string>, const Bmr::ResultRow*> cell;   // (n, variant) → row
+    for (const auto* row : rows) {
+        const std::string variant = variantOf(*row);
+        if (std::ranges::find(variants, variant) == variants.end())
+            variants.push_back(variant);
+        if (std::ranges::find(sizes, row->n) == sizes.end())
+            sizes.push_back(row->n);
+        cell[{row->n, variant}] = row;
+    }
+    std::ranges::sort(sizes, {}, [](const std::string& n) { return std::strtod(n.c_str(), nullptr); });
+
+    std::vector<std::string> header{work};
+    header.insert(header.end(), variants.begin(), variants.end());
+    header.push_back("best");
+    std::vector<std::vector<Cell>> lines;
+    for (const auto& n : sizes) {
+        std::vector<Cell> line{{"  " + compactN(n), "a2"}};
+        const Bmr::ResultRow* best = nullptr;
+        bool changed = false;
+        for (const auto& variant : variants) {
+            const auto it = cell.find({n, variant});
+            if (it == cell.end()) {
+                line.push_back({"-", "mut"});
+                continue;
+            }
+            const auto& row = *it->second;
+            const Change change = changeOf(row, before, thresholds, tally);
+            changed |= change.changed;
+            line.push_back(timeCell(row.value, change.style));
+            if (!best || row.value < best->value)
+                best = &row;
+        }
+        line.push_back({best ? variantOf(*best) : "-", "a2"});
+        if (!changedOnly || changed)
+            lines.push_back(std::move(line));
+    }
+    if (lines.empty())
+        return;
+    std::set<size_t> right;
+    for (size_t i = 1; i <= variants.size(); ++i)
+        right.insert(i);
+    printTable(header, lines, right);
+
+    std::string crossovers;
+    for (const auto* row : comparison)
+        if (row->metric.starts_with("crossover:")) {
+            const std::string slower = row->metric.substr(10);
+            crossovers += row->value > 0
+                ? std::format("  <light>{}</> <mut>beats</> <light>{}</> <mut>from N ≈</> <light>{}</>", row->implementation,
+                      slower, compactN(std::format("{:.0f}", row->value)))
+                : std::format("  <light>{}</> <mut>beats</> <light>{}</> <mut>at every N</>", row->implementation, slower);
+        }
+    if (!crossovers.empty())
+        Logger::message(TextFormatter::format("{}", crossovers));
+}
+
+/// Time per bench and N against a reference, the change coloured by significance.
+/// Works with one implementation: a row per point; with several: side by side.
+/// Returns the tally.
 Tally resultsTable(const Bmr::ResultTable& table, const Reference& against, const Bh::Thresholds& thresholds,
                    bool changedOnly, bool measured = false) {
     std::map<std::string, const Bmr::ResultRow*> before;
@@ -474,18 +606,33 @@ Tally resultsTable(const Bmr::ResultTable& table, const Reference& against, cons
             rows.push_back(row);
     Bmr::sortRows(rows);
 
+    // Works and how many variants each has.
+    std::map<std::string, std::set<std::string>> variants;
+    for (const auto& row : rows)
+        variants[row.group + "/" + row.bench].insert(variantOf(row));
+    std::map<std::string, std::vector<const Bmr::ResultRow*>> comparisons;
+    for (const auto& row : table.rows)
+        if (row.stage == "compare")
+            comparisons[row.group + "/" + row.bench].push_back(&row);
+
     std::vector<std::string> header{"bench", "time", "per N", "cv"};
     if (measured)
         header.push_back("measured");
     if (against.table)
         header.insert(header.end(), {against.label, "Δ", ""});
     std::vector<std::vector<Cell>> cells;
+    std::map<std::string, std::vector<const Bmr::ResultRow*>> grouped;   // works with several variants
     Tally tally;
     for (const auto& row : rows) {
+        const std::string work = row.group + "/" + row.bench;
+        if (variants[work].size() > 1) {
+            grouped[work].push_back(&row);
+            continue;
+        }
         const double cv = Bh::variation(row.samples);
         const double n = std::strtod(row.n.c_str(), nullptr);
         std::vector<Cell> line{
-            {row.group + "/" + row.bench + "/" + row.n, "light"}, timeCell(row.value, "light"),
+            {rowName(row) + "/" + row.n, "light"}, timeCell(row.value, "light"),
             n > 0 ? timeCell(row.value / n, "") : Cell{"-", "mut"},
             {row.samples.size() >= 2 ? std::format("{:.1f}%", cv * 100) : "-", variationStyle(cv)},
         };
@@ -493,45 +640,25 @@ Tally resultsTable(const Bmr::ResultTable& table, const Reference& against, cons
             line.push_back({row.measured, "a2"});
         bool changed = false;
         if (against.table) {
-            const auto it = before.find(Bmr::rowKey(row));
-            if (it == before.end()) {
-                ++tally.fresh;
-                line.insert(line.end(), {{"-", "mut"}, {"new", "mut"}, {}});
-            } else {
-                const auto& old = *it->second;
-                const auto shift = Bh::shift(old.value, old.samples, row.value, row.samples, thresholds);
-                const std::string delta = std::format("{:+.1f}%", (shift.ratio - 1) * 100);
-                // The mark is a column of its own: the numbers stay aligned.
-                Cell change{delta, "mut"}, mark;
-                if (shift.significant && shift.ratio > 1) {
-                    change.style = "err";
-                    mark = {"▼", "err"};
-                    ++tally.slower;
-                    changed = true;
-                } else if (shift.significant) {
-                    change.style = "ok";
-                    mark = {"▲", "ok"};
-                    ++tally.faster;
-                    changed = true;
-                } else if (shift.noisy) {
-                    mark = {"~", "mut"};
-                    ++tally.noisy;
-                } else {
-                    ++tally.same;
-                }
-                line.push_back(timeCell(old.value, "mut"));
-                line.push_back(std::move(change));
-                line.push_back(std::move(mark));
-            }
+            Change change = changeOf(row, before, thresholds, tally);
+            changed = change.changed;
+            line.push_back(change.found ? timeCell(change.reference, "mut") : Cell{"-", "mut"});
+            line.push_back(std::move(change.delta));
+            line.push_back(std::move(change.mark));
         }
         if (changedOnly && !changed)
             continue;
         cells.push_back(std::move(line));
     }
-    if (cells.empty())
-        Logger::message(TextFormatter::format("<mut>{}</>", changedOnly ? "no significant changes" : "no timings"));
-    else
+    if (!cells.empty())
         printTable(header, cells, {1, 2, 3, 4, 5});
+    for (const auto& [work, workRows] : grouped) {
+        if (!cells.empty() || &work != &grouped.begin()->first)
+            Logger::blank();
+        sideBySide(work, workRows, comparisons[work], before, thresholds, changedOnly, tally);
+    }
+    if (cells.empty() && grouped.empty())
+        Logger::message(TextFormatter::format("<mut>{}</>", changedOnly ? "no significant changes" : "no timings"));
 
     if (against.table) {
         std::string summary = std::format("<ok>{} faster</> <mut>·</> <{}>{} slower</> <mut>· {} unchanged",
@@ -553,7 +680,7 @@ void details(const Bmr::ResultTable& table) {
         if (!row.metric.starts_with("Phases.") || row.n == "-" || row.metric.ends_with(".rate"))
             continue;
         const double n = std::strtod(row.n.c_str(), nullptr);
-        auto& [largest, rows] = phases[row.group + "/" + row.bench];
+        auto& [largest, rows] = phases[rowName(row)];   // per variant: cpu×16 and gpu apart
         if (n > largest) {
             largest = n;
             rows.clear();
@@ -599,18 +726,18 @@ void details(const Bmr::ResultTable& table) {
     std::map<std::string, std::vector<const Bmr::ResultRow*>> works;
     for (const auto& row : table.rows)
         if (row.stage == "compare")
-            works[row.group + "/" + row.work + (row.mode == "-" ? "" : " [" + row.mode + "]")].push_back(&row);
+            works[row.group + "/" + row.bench].push_back(&row);
     for (const auto& [work, rows] : works) {
         std::map<std::string, std::pair<double, double>> fits;
         std::string crossover;
         for (const auto* row : rows) {
-            if (row->metric == "fixed") fits[row->executor].first = row->value;
-            if (row->metric == "per") fits[row->executor].second = row->value;
+            if (row->metric == "fixed") fits[row->implementation].first = row->value;
+            if (row->metric == "per") fits[row->implementation].second = row->value;
             if (row->metric.starts_with("crossover:"))
                 crossover += row->value > 0
-                    ? std::format(" <light>{}</> <mut>faster than {} from N ≈</> <light>{}</>", row->executor,
+                    ? std::format(" <light>{}</> <mut>faster than {} from N ≈</> <light>{}</>", row->implementation,
                           row->metric.substr(10), compactN(std::format("{:.0f}", row->value)))
-                    : std::format(" <light>{}</> <mut>faster than {} at every N</>", row->executor, row->metric.substr(10));
+                    : std::format(" <light>{}</> <mut>faster than {} at every N</>", row->implementation, row->metric.substr(10));
         }
         std::string text;
         for (const auto& [executor, fit] : fits)
@@ -632,11 +759,9 @@ std::string ask(std::string_view question) {
     return answer;
 }
 
-/// The row's name in tables: `group/bench/N`; a comparison row is `group/work [executor]`.
+/// The row's name in tables: `group/work[/variant]/N`.
 std::string rowLabel(const Bmr::ResultRow& row) {
-    if (row.bench == "-")
-        return rowName(row);
-    return row.group + "/" + row.bench + (row.n == "-" ? "" : "/" + row.n);
+    return rowName(row) + (row.n == "-" ? "" : "/" + row.n);
 }
 
 /// A metric's value as a cell: times split into number and coloured unit.

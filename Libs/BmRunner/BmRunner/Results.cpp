@@ -17,8 +17,14 @@ struct ResultsFormat;
 using Error = Exception<ResultsFormat>;
 
 constexpr std::string_view Header =
+    "group\tbench\timplementation\tparams\tn\tstage\tmetric\tvalue\tsamples\tmeasured";
+constexpr size_t Columns = 10;
+
+// The first format (one bench per implementation, tagged with work/executor/mode): read and
+// mapped onto the current one, so saved history keeps comparing with new runs.
+constexpr std::string_view LegacyHeader =
     "group\tbench\twork\texecutor\tmode\tn\tstage\tmetric\tvalue\tsamples\tmeasured";
-constexpr size_t Columns = 11;
+constexpr size_t LegacyColumns = 11;
 
 /// Поля без табуляций и переводов строк; пустое — `-`.
 std::string field(std::string_view value) {
@@ -66,9 +72,8 @@ ResultRow base(const BenchResult& result) {
     return {
         .group = field(result.group),
         .bench = field(result.name),
-        .work = field(result.work),
-        .executor = field(result.executor),
-        .mode = field(modeName(result.mode)),
+        .implementation = field(result.implementation),
+        .params = field(parametersText(result.params)),
         .measured = "-",
     };
 }
@@ -163,10 +168,9 @@ std::vector<ResultRow> resultRows(const Comparison& comparison) {
     auto row = [&](std::string_view executor, std::string metric, double value) {
         rows.push_back({
             .group = field(comparison.group),
-            .bench = "-",
-            .work = field(comparison.work),
-            .executor = field(executor),
-            .mode = field(comparison.mode),
+            .bench = field(comparison.work),
+            .implementation = field(executor),
+            .params = "-",
             .n = "-",
             .stage = "compare",
             .metric = field(metric),
@@ -185,7 +189,7 @@ std::vector<ResultRow> resultRows(const Comparison& comparison) {
 }
 
 std::string rowKey(const ResultRow& row) {
-    return std::format("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}", row.group, row.bench, row.work, row.executor, row.mode, row.n,
+    return std::format("{}\t{}\t{}\t{}\t{}\t{}\t{}", row.group, row.bench, row.implementation, row.params, row.n,
         row.stage, row.metric);
 }
 
@@ -198,12 +202,11 @@ void sortRows(std::vector<ResultRow>& rows) {
     std::ranges::stable_sort(rows, [&](const ResultRow& a, const ResultRow& b) {
         if (a.group != b.group) return a.group < b.group;
         if (a.bench != b.bench) return a.bench < b.bench;
-        if (a.work != b.work) return a.work < b.work;
-        if (a.mode != b.mode) return a.mode < b.mode;
+        if (a.implementation != b.implementation) return a.implementation < b.implementation;
+        if (a.params != b.params) return a.params < b.params;
         if (const double x = numeric(a.n), y = numeric(b.n); x != y) return x < y;
         if (a.stage != b.stage) return a.stage < b.stage;
-        if (a.metric != b.metric) return a.metric < b.metric;
-        return a.executor < b.executor;
+        return a.metric < b.metric;
     });
 }
 
@@ -229,6 +232,8 @@ std::string writeTsv(const ResultTable& table) {
 ResultTable parseTsv(std::string_view text) {
     ResultTable table;
     bool header = false;
+    bool legacy = false;
+    std::vector<std::string> migrated;   // storage of the mapped legacy fields
     size_t line = 0;
     while (!text.empty()) {
         const size_t end = text.find('\n');
@@ -256,7 +261,9 @@ ResultTable parseTsv(std::string_view text) {
             continue;
         }
         if (!header) {
-            if (current != Header)
+            if (current == LegacyHeader)
+                legacy = true;
+            else if (current != Header)
                 throw Error("line {}: expected the header '{}'", line, Header);
             header = true;
             continue;
@@ -270,20 +277,37 @@ ResultTable parseTsv(std::string_view text) {
                 break;
             start = tab + 1;
         }
+        if (legacy) {
+            // work/executor/mode → bench/implementation/params: `ConstrainGpu` (work
+            // Constrain, executor gpu) is the gpu variant of Constrain; mode offload became
+            // the work ConstrainOffload; a cpu executor was one thread.
+            if (fields.size() != LegacyColumns)
+                throw Error("line {}: {} columns, expected {}", line, fields.size(), LegacyColumns);
+            const std::string_view work = fields[2], executor = fields[3], mode = fields[4];
+            std::string bench(work != "-" ? work : fields[1]);
+            if (mode == "offload")
+                bench += "Offload";
+            const std::string params = executor == "cpu" ? "workers=1" : "-";
+            migrated = std::vector<std::string>{std::string(fields[0]), bench, std::string(executor), params};
+            fields.erase(fields.begin() + 1, fields.begin() + 5);
+            fields.insert(fields.begin(), 3, std::string_view{});
+            for (size_t i = 0; i < 4; ++i)
+                fields[i] = migrated[i];
+        }
         if (fields.size() != Columns)
             throw Error("line {}: {} columns, expected {}", line, fields.size(), Columns);
 
         ResultRow row{
-            .group = std::string(fields[0]), .bench = std::string(fields[1]), .work = std::string(fields[2]),
-            .executor = std::string(fields[3]), .mode = std::string(fields[4]), .n = std::string(fields[5]),
-            .stage = std::string(fields[6]), .metric = std::string(fields[7]),
-            .value = parseNumber(fields[8], line), .measured = std::string(fields[10]),
+            .group = std::string(fields[0]), .bench = std::string(fields[1]),
+            .implementation = std::string(fields[2]), .params = std::string(fields[3]), .n = std::string(fields[4]),
+            .stage = std::string(fields[5]), .metric = std::string(fields[6]),
+            .value = parseNumber(fields[7], line), .measured = std::string(fields[9]),
         };
-        if (fields[9] != "-") {
+        if (fields[8] != "-") {
             for (size_t start = 0;;) {
-                const size_t comma = fields[9].find(',', start);
+                const size_t comma = fields[8].find(',', start);
                 row.samples.push_back(parseNumber(
-                    fields[9].substr(start, comma == std::string_view::npos ? std::string_view::npos : comma - start), line));
+                    fields[8].substr(start, comma == std::string_view::npos ? std::string_view::npos : comma - start), line));
                 if (comma == std::string_view::npos)
                     break;
                 start = comma + 1;

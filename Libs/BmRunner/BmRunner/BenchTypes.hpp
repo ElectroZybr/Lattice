@@ -114,26 +114,26 @@ struct PointResult {
 // результат полностью завершенного бенчмарка
 struct BenchResult;
 
-/// Одна работа на одном исполнителе: подгонка полного времени t(N) = fixed + per·N.
+/// Один вариант работы (реализация и параметры): подгонка полного времени
+/// t(N) = fixed + per·N.
 struct ExecutorFit {
-    std::string executor;
+    std::string executor;   // имя варианта: `cpu×16`, `gpu`
     double fixed = 0;   // нс: задержка, не зависящая от N
     double per = 0;     // нс на элемент
     double error = 0;   // относительная ошибка подгонки
 };
 
-/// Начиная с n исполнитель `faster` выигрывает у `slower` (у него меньше цена на элемент).
+/// Начиная с n вариант `faster` выигрывает у `slower` (у него меньше цена на элемент).
 struct Crossover {
     std::string faster;
     std::string slower;
     double n = 0;
 };
 
-/// Сравнение одной работы на разных исполнителях (один режим).
+/// Сравнение вариантов одной работы.
 struct Comparison {
     std::string group;
     std::string work;
-    std::string mode;
     std::vector<ExecutorFit> executors;
     std::vector<Crossover> crossovers;
 };
