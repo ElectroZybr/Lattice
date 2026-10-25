@@ -1032,9 +1032,9 @@ ParamBuild<Field> ObjectBuild<T>::param(std::string_view name, Field Owner::* me
 
 template<class T>
 template<class Queue>
-void ObjectBuild<T>::executeOn(const ObjectBuild<Queue>& queue) {
+void ObjectBuild<T>::executeOn(const Ref<Queue>& queue) {
     auto object = ref();
-    auto target = queue.ref();
+    const Ref<Queue> target = queue;
     detail::resolveHandle(target, *object.runtime());
     // The object's exports run through the queue: it must outlive them.
     object.runtime()->dependencies.retain(object.id(), target.id());

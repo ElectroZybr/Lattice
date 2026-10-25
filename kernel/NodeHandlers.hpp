@@ -69,7 +69,7 @@ public:
     /// `queue->call(work)` runs work there and returns when it is done; with
     /// `queue->post(work)` plain param writes are handed over without waiting. Declare it
     /// before the exports; the object then depends on the queue's node.
-    template<class Queue> void executeOn(const ObjectBuild<Queue>& queue);
+    template<class Queue> void executeOn(const Ref<Queue>& queue);
     // Methods may take ActionContext& as their first parameter.
     template<class Owner, class Result, class... Args>
     ExportId action(std::string_view name, Result (Owner::*member)(Args...));

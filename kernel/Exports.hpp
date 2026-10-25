@@ -115,6 +115,8 @@ struct Export {
     NodeId owner = InvalidNodeId;
     uint32_t slot = 0;  // index in the params or the actions of Exports, by kind
     ExportKind kind = ExportKind::Param;
+    /// A param over functions of its source (accessor): the owner's executor is not its.
+    bool accessor = false;
 };
 
 enum class ParamChange : uint8_t { Set, Reset, Remove };
@@ -579,7 +581,7 @@ public:
         std::function<void(std::function<void()>)> post = {}
     ) {
         for (const auto& entry : exports_)
-            if (entry.owner == owner)
+            if (entry.owner == owner && !entry.accessor)
                 throw Exception<Exports>("executeOn for node #{} must precede its exports ('{}')", owner, entry.name);
         auto run = std::make_unique<Executor>();
         run->call = std::move(call);
@@ -629,6 +631,7 @@ public:
         const size_t slot = params_.size();
         params_.push_back({state.get(), &AccessorParam<T>::get, &AccessorParam<T>::set});
         const ExportId id = record(owner, name, ExportKind::Param, slot);
+        exports_[id].accessor = true;
         states_.emplace(id, std::move(state));
         return id;
     }

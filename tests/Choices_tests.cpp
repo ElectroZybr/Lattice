@@ -250,4 +250,26 @@ TEST(Choices_UnneededAmbiguityIsNoError, RuntimeFixture,
     REQUIRE(NodeBuild(fixture.root, nodes).exports().pending().empty());
 }
 
+
+struct Owned { float value = 0.0f; };
+struct Queue {
+    template<class F> void call(F&& work) { work(); }
+};
+void composeOwnedSlot(NodeBuild root) {
+    auto queue = root.emplace<Queue>("queue");
+    root.addSlot<Renderer>("renderer");          // its choice param lands on this node first
+    auto owned = root.construct<Owned>();
+    owned.executeOn(queue);
+    owned.param("value", &Owned::value);
+}
+
+TEST(Choices_ParamsOfTheKernelLetExecuteOnFollow, RuntimeFixture,
+    "Параметр выбора слота на узле не мешает объекту узла объявить executeOn позже.") {
+    auto& nodes = fixture.run_ctx.nodes;
+    nodes.blueprints.addImplementation(implementation<Renderer, composeSoftware>("Software"), "Render");
+    const auto branch = nodes.builder.add(fixture.root, nodes.blueprints.addComposition("Owner", composeOwnedSlot), "owner");
+    REQUIRE(nodes.exports.find(branch, "renderer") != InvalidExportId);
+    REQUIRE(nodes.exports.find(branch, "value") != InvalidExportId);
+}
+
 }
