@@ -105,6 +105,18 @@ TEST(ParamRules_RangeIncludesEnds, RuntimeFixture,
     REQUIRE(!rules.setter && rules.choices.empty());
 }
 
+TEST(ParamRules_FloatReadsAsWritten, RuntimeFixture,
+    "float показывается кратчайшей записью: 0.01f — это 0.01, и обратная запись даёт то же число.") {
+    auto& exports = fixture.run_ctx.nodes.exports;
+    auto settings = fixture.build(fixture.root).emplace<Settings>("settings");
+    const ExportId dt = settings.param("dt", &Settings::dt);
+    REQUIRE(exports.value(dt).toString() == "0.01");
+    REQUIRE(formatNumber(0.1) == "0.1" && formatNumber(1.0 / 3.0) == "0.3333333333333333");
+    REQUIRE(Value{std::stod(exports.value(dt).toString())}.get<float>() == 0.01f);
+    REQUIRE(exports.set(dt, exports.value(dt)));
+    REQUIRE(settings->dt == 0.01f);
+}
+
 TEST(ParamRules_ChoicesAndLength, RuntimeFixture,
     "choices: отказ Choice со списком допустимого; maxLength: отказ Length с участком.") {
     auto& exports = fixture.run_ctx.nodes.exports;

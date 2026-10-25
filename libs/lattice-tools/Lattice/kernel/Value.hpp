@@ -1,5 +1,6 @@
 #pragma once
 
+#include <charconv>
 #include <cstdint>
 #include <format>
 #include <memory>
@@ -13,6 +14,24 @@
 #include <glm/vec4.hpp>
 
 namespace Lattice {
+
+/// A float as it reads: 0.01f is 0.01, not the 0.009999999776482582 of its double.
+inline double shortest(float value) {
+    char text[32];
+    const auto end = std::to_chars(text, text + sizeof text, value).ptr;
+    double result = 0;
+    std::from_chars(text, end, result);
+    return result;
+}
+
+/// A number for people and files: a double that holds a float exactly (a float param)
+/// shows the float's shortest form, others the double's. Both read back to the same value.
+inline std::string formatNumber(double value) {
+    const float narrow = static_cast<float>(value);
+    if (static_cast<double>(narrow) == value) return std::format("{}", narrow);
+    return std::format("{}", value);
+}
+
 
 /**
  @file Value.hpp
@@ -125,7 +144,7 @@ struct Value : std::variant<StringPtr, int64_t, double, bool,
                 return std::to_string(value);
 
             else if constexpr (std::is_same_v<T, double>)
-                return std::format("{}", value);
+                return formatNumber(value);
 
             else if constexpr (std::is_same_v<T, glm::vec2>)
                 return std::format("[{}, {}]", value.x, value.y);

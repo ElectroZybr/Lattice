@@ -319,17 +319,9 @@ struct TypedParam final : ParamState {
         return {};
     }
 
-    /// A bound as it was written: 1e-6f reads 1e-06, not 9.99999997e-07.
     static double shown(T bound) {
-        if constexpr (std::is_same_v<T, float>) {
-            char text[32];
-            const auto end = std::to_chars(text, text + sizeof text, bound).ptr;
-            double value = 0;
-            std::from_chars(text, end, value);
-            return value;
-        } else {
-            return static_cast<double>(bound);
-        }
+        if constexpr (std::is_same_v<T, float>) return shortest(bound);
+        else return static_cast<double>(bound);
     }
 
     ParamRules rules() const override {
