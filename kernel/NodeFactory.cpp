@@ -29,8 +29,11 @@ NodeId NodeFactory::createNode(
         nodeSystem_.registry.require(parent).state == NodeState::Retiring)
         throw Exception<NodeFactory>("Cannot create a node under retiring parent #{}", parent);
 
+    // Sibling compositions of one type are candidates of a choice; parts built from an
+    // implementation (lights of a scene) are plain children, like emplaced ones.
     if (kind == NodeKind::Object && discriminator == NormalIdentity &&
-        parent != InvalidNodeId && bp != InvalidBlueprintId) {
+        parent != InvalidNodeId && bp != InvalidBlueprintId &&
+        !nodeSystem_.blueprints.require(bp).meta.composeSlot) {
         for (NodeId child : nodeSystem_.registry.children(parent)) {
             if (nodeSystem_.registry.require(child).bp == bp) {
                 previous = child;
@@ -93,8 +96,10 @@ void NodeFactory::construct(NodeId id, BlueprintId type,
         throw Exception<NodeFactory>("Blueprint has no object storage operations");
     {
         auto& node = nodeSystem_.registry.require(id);
-        // A slot being composed holds its implementation object itself.
-        const bool slot = node.kind == NodeKind::Slot && node.object.building && !node.object.ptr;
+        // A slot (or a child built from an implementation) being composed holds the
+        // implementation object itself.
+        const bool slot = (node.kind == NodeKind::Slot || node.kind == NodeKind::Object) &&
+            node.object.building && !node.object.ptr;
         const bool holder = node.kind == NodeKind::Object || node.kind == NodeKind::Folder;
         if (node.state != NodeState::Active || node.object.ptr || (!slot && (!holder || node.object.building)))
             throw Exception<NodeFactory>("Node #{} cannot hold another object", id);
@@ -140,10 +145,12 @@ void NodeFactory::constructObject(NodeId id, BlueprintId implementation) {
         nodeSystem_.ops.beginCompose(id);
         Composing composing{nodeSystem_.ops, id};
         const auto target = blueprint.meta.composeSlot(build);
-        // The implementation object lives on the slot itself (slot.construct<Impl, API>).
+        // The implementation object lives on its node (slot.construct<Impl, API>): a slot of
+        // the API, or a child built from the implementation itself.
         auto& node = nodeSystem_.registry.require(id);
         node.object.building = false;
-        if (target != id || !node.object.ptr || !nodeSystem_.query.resolve(id, node.bp))
+        const BlueprintId api = node.kind == NodeKind::Slot || blueprint.bases.empty() ? node.bp : blueprint.bases.front();
+        if (target != id || !node.object.ptr || !nodeSystem_.query.resolve(id, api))
             throw Exception<NodeFactory>("Slot composition must construct its API object on the slot");
         composing.done = true;
         nodeSystem_.ops.endCompose(id);

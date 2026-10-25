@@ -182,4 +182,35 @@ TEST(Builder_ComposeFailureLeavesNoRegistryGarbageAndCanRetry, RuntimeFixture,
     REQUIRE(nodes.registry.children(fixture.root).size() == childrenBefore + 1);
 }
 
+TEST(Builder_ReportsNewNodes, RuntimeFixture,
+    "После сборки наблюдатели узнают о новых узлах; сборка внутри наблюдателя сообщается после него, отписанный не вызывается.") {
+    auto& nodes = fixture.run_ctx.nodes;
+    const BlueprintId blueprint = nodes.blueprints.addComposition("BuilderReported", composeObject);
+    nodes.ops.reportBuilds(); // the fixture's own nodes are not news
+    int reports = 0;
+    bool nested = false;
+    const auto token = nodes.ops.observeBuilds([&] {
+        ++reports;
+        if (!nested) {
+            nested = true;
+            nodes.builder.add(fixture.root, blueprint, "nested");
+        }
+    });
+
+    nodes.builder.add(fixture.root, blueprint, "first");
+    REQUIRE(reports == 2, "the build and the build made inside the observer");
+    nodes.ops.maintain();
+    REQUIRE(reports == 2, "nothing new: no report");
+
+    // A new export without a new node (a slot's replaced implementation) is news too.
+    struct Value { double v = 0; } value;
+    fixture.build(fixture.root).param("reported", value.v);
+    nodes.ops.reportBuilds();
+    REQUIRE(reports == 3, "a new export is reported");
+
+    nodes.ops.unobserveBuilds(token);
+    nodes.builder.add(fixture.root, blueprint, "second");
+    REQUIRE(reports == 3);
+}
+
 }

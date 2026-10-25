@@ -51,6 +51,7 @@ void Builder::Batch::commit() {
     // implementation is filled now: the system is built, that is its first need.
     finished_ = true;
     builder_->nodeSystem_.choices.fill();
+    builder_->nodeSystem_.ops.reportBuilds();
 }
 
 void Builder::Batch::rollback() noexcept {

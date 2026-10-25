@@ -117,6 +117,31 @@ auto composeHardware(NodeBuild& slot) { return slot.construct<Hardware, Renderer
 
 void composeRenderer(NodeBuild root) { root.addSlot<Renderer>("renderer"); }
 
+TEST(Choices_ImplementationBuildsAChild, RuntimeFixture,
+    "Builder собирает реализацию из каталога обычным ребёнком: объект под API, его тип — как у ребёнка из compose.") {
+    auto& nodes = fixture.run_ctx.nodes;
+    const auto hardware = nodes.blueprints.addImplementation(implementation<Renderer, composeHardware>("Hardware"), "Render");
+    const auto child = nodes.builder.add(fixture.root, hardware, "main");
+    const auto& node = nodes.registry.require(child);
+    REQUIRE(node.kind != NodeKind::Slot && node.bp == hardware);
+    REQUIRE(static_cast<const Renderer*>(nodes.factory.resolve(child, nodes.blueprints.id<Renderer>()))->backend() == 2);
+    REQUIRE(node.object.bp == nodes.blueprints.id<Hardware>(), "the object is the implementation's type");
+    REQUIRE(nodes.exports.find(fixture.root, "main") == InvalidExportId, "a child, not a slot: no choice param");
+}
+
+struct Lamp { int watts = 60; };
+auto composeLamp(NodeBuild& node) { return node.construct<Lamp>(); }
+
+TEST(Choices_ConcreteImplementationBuildsAChild, RuntimeFixture,
+    "Реализация, чей API — сам конкретный тип, собирается и тогда, когда тип зарегистрирован раньше объекта (как API каталога).") {
+    auto& nodes = fixture.run_ctx.nodes;
+    const auto lamp = nodes.blueprints.addImplementation(implementation<Lamp, composeLamp>("Lamp"), "Scene");
+    const auto child = nodes.builder.add(fixture.root, lamp, "desk");
+    REQUIRE(static_cast<const Lamp*>(nodes.factory.resolve(child, nodes.blueprints.id<Lamp>()))->watts == 60);
+    nodes.builder.add(fixture.root, lamp, "floor");
+    REQUIRE(nodes.exports.find(fixture.root, "lamp") == InvalidExportId, "two parts of one type are not a choice");
+}
+
 TEST(Choices_SlotWithOneImplementationFillsItself, RuntimeFixture,
     "Одна реализация API заполняет слот в конце композиции; новая реализация выбор не меняет.") {
     auto& nodes = fixture.run_ctx.nodes;

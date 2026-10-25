@@ -4,6 +4,7 @@
 #include <thread>
 #include <chrono>
 #include <Lattice/kernel/NodeOps.hpp>
+#include <Lattice/kernel/NodeSystem.hpp>
 #include <Lattice/kernel/NodeRegistry.hpp>
 #include <Lattice/kernel/NodeViews.hpp>
 #include <Lattice/kernel/NodeContext.hpp>
@@ -313,6 +314,33 @@ void NodeOps::maintain() {
     nodeSystem_.choices.maintain();
     reconfigure();
     nodeSystem_.context.notifyChanges();
+    reportBuilds();
+}
+
+uint64_t NodeOps::observeBuilds(std::function<void()> callback) {
+    const auto token = nextBuildObserver_++;
+    buildObservers_.emplace_back(token, std::make_shared<std::function<void()>>(std::move(callback)));
+    return token;
+}
+
+void NodeOps::unobserveBuilds(uint64_t token) {
+    std::erase_if(buildObservers_, [&](const auto& entry) { return entry.first == token; });
+}
+
+void NodeOps::reportBuilds() {
+    if (reporting_ || composing()) return;
+    reporting_ = true;
+    struct Done { bool& active; ~Done() { active = false; } } done{reporting_};
+    while (reportedGeneration_ != nodeSystem_.registry.lastGeneration() ||
+           reportedExports_ != nodeSystem_.exports.size()) {
+        reportedGeneration_ = nodeSystem_.registry.lastGeneration();
+        reportedExports_ = nodeSystem_.exports.size();
+        // A copy: callbacks may observe or unobserve; an unobserved one is not called.
+        const auto observers = buildObservers_;
+        for (const auto& [token, callback] : observers)
+            if (std::ranges::any_of(buildObservers_, [&](const auto& entry) { return entry.first == token; }))
+                (*callback)();
+    }
 }
 
 bool NodeOps::configurable(NodeId id) const {

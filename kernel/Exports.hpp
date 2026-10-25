@@ -720,6 +720,9 @@ public:
         index(static_cast<uint32_t>(aliases_.size() - 1) | AliasEntry);
     }
 
+    /// Ids are given in order and never reused: an id at or above an earlier size is newer.
+    ExportId size() const noexcept { return static_cast<ExportId>(exports_.size()); }
+
     const Export* get(ExportId id) const {
         return id < exports_.size() ? &exports_[id] : nullptr;
     }

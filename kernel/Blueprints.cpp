@@ -113,7 +113,8 @@ BlueprintId Blueprints::resolveImplementation(
                isA(id, api);
     };
 
-    if (compatible(api))
+    // An implementation from a package builds itself, like a composition.
+    if (compatible(api) || require(api).meta.composeSlot)
         return api;
 
     const auto select = [&](bool local) {

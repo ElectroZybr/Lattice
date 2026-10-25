@@ -29,6 +29,14 @@ public:
     std::vector<NodeId> services(NodeId root) const;
     void maintain();
 
+    /// Something was built: called at the end of a build and of maintain, outside any
+    /// composition, when there are nodes or exports newer than at the previous call (a slot
+    /// keeps its node when its implementation is replaced; the new one brings new exports).
+    /// Builds made by a callback are reported after it returns.
+    uint64_t observeBuilds(std::function<void()> callback);
+    void unobserveBuilds(uint64_t token);
+    void reportBuilds();
+
     // configure: repeatable wiring of composed branches with the current tree.
     /// Mark configure branches affected by a change at `changed` (its ancestors and
     /// branches that looked it up) to be reconfigured.
@@ -87,6 +95,11 @@ private:
     std::vector<std::pair<NodeId, NodeId>> observations_;   // observer, observed
     std::vector<std::pair<NodeId, RoleId>> roleObservations_;   // observer, role
     bool reconfiguring_ = false;
+    std::vector<std::pair<uint64_t, std::shared_ptr<std::function<void()>>>> buildObservers_;
+    uint64_t nextBuildObserver_ = 1;
+    uint64_t reportedGeneration_ = 0;
+    uint32_t reportedExports_ = 0; // Exports::size()
+    bool reporting_ = false;
     bool maintainingObjects_ = false;
     NodeId maintainingObject_ = InvalidNodeId;
     std::vector<std::vector<NodeId>> retiring_;

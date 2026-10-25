@@ -28,16 +28,6 @@ BlueprintId ensureObject(Blueprints& blueprints, std::string_view name = typeKey
         (addBase.template operator()<Bases>(), ...);
         return id;
     };
-    if (const auto existing = blueprints.find<T>(); existing != InvalidBlueprintId)
-        return expose(existing);
-    Blueprint blueprint{
-        .name = std::string(name),
-        .bases = {blueprints.id<Bases>()...}
-    };
-    blueprint.upcasts = {+[](void* ptr) -> void* {
-        return static_cast<Bases*>(static_cast<T*>(ptr));
-    }...};
-    blueprint.meta.allocate = []() -> void* { return std::allocator<T>{}.allocate(1); };
     static const BlueprintOps ops{
         .destroy = [](void* ptr) {
             auto* object = static_cast<T*>(ptr);
@@ -46,6 +36,24 @@ BlueprintId ensureObject(Blueprints& blueprints, std::string_view name = typeKey
         },
         .deallocate = [](void* ptr) { std::allocator<T>{}.deallocate(static_cast<T*>(ptr), 1); }
     };
+    const auto allocate = []() -> void* { return std::allocator<T>{}.allocate(1); };
+    if (const auto existing = blueprints.find<T>(); existing != InvalidBlueprintId) {
+        // A name registered before its type was (the API of an implementation) gets the storage now.
+        auto& blueprint = blueprints.require(existing);
+        if (!blueprint.meta.allocate) {
+            blueprint.meta.allocate = allocate;
+            blueprint.meta.ops = &ops;
+        }
+        return expose(existing);
+    }
+    Blueprint blueprint{
+        .name = std::string(name),
+        .bases = {blueprints.id<Bases>()...}
+    };
+    blueprint.upcasts = {+[](void* ptr) -> void* {
+        return static_cast<Bases*>(static_cast<T*>(ptr));
+    }...};
+    blueprint.meta.allocate = allocate;
     blueprint.meta.ops = &ops;
     return expose(blueprints.create(std::move(blueprint), std::string(name)));
 }

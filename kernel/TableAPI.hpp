@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <optional>
 #include <span>
@@ -174,8 +175,29 @@ public:
         return column(*index);
     }
 
+    /// One cell from the bytes of a value of the column's type (checked like ColumnView::values):
+    /// the way a loader that knows only the contract fills a table. For trivially copyable columns.
+    void write(size_t column, size_t row, const void* value, TableType type) {
+        const ColumnView target = this->column(column);
+        if (target.type() != type)
+            throw Exception<Table>("Column '{}' contains '{}', written '{}'", target.name(), target.type().name, type.name);
+        if (row >= rows())
+            throw Exception<Table>("Row {} is out of range [0, {})", row, rows());
+        writeElement(column, row, value);
+    }
+
 protected:
     virtual void* mutableElement(size_t column, size_t row) = 0;
+
+    /// The bytes of one cell, from write().
+    virtual void writeElement(size_t column, size_t row, const void* value) {
+        std::memcpy(mutableElement(column, row), value, this->column(column).type().size);
+        written(column, row);
+    }
+
+    /// After every write of a cell — write() or a typed addRow(): a table that indexes a column
+    /// (named rows) follows its writes here.
+    virtual void written(size_t /*column*/, size_t /*row*/) {}
 
 private:
     template<size_t Index>
@@ -205,6 +227,7 @@ private:
         using Value = std::remove_cvref_t<First>;
         *static_cast<Value*>(mutableElement(Index, row)) =
             std::forward<First>(first);
+        written(Index, row);
 
         if constexpr (sizeof...(Rest) > 0)
             assignRow<Index + 1>(row, std::forward<Rest>(rest)...);

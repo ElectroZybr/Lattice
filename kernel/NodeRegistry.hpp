@@ -44,6 +44,9 @@ public:
         return id;
     }
 
+    /// The generation of the newest node: grows with every node created.
+    uint64_t lastGeneration() const noexcept { return nextGeneration_ - 1; }
+
     uint64_t generation(NodeId id) const {
         require(id);
         return generations_[id];
