@@ -253,4 +253,4 @@ Focus `fast` на CPU: новые разрешения возвращают CPU,
 Автоматического rebuild и восстановления старой ветки при ошибке нового build нет.
 
 Подробный контракт, карта исходников и сценарий с Builder:
-[Context и пересборка](../../Docs/ru/Kernel/Composition.md).
+[Context и пересборка](../../docs/ru/articles/Composition.md).

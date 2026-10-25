@@ -1,10 +1,10 @@
 package("lattice-logger")
     set_description("Reusable Logger library without the Lattice runtime")
     set_license("GPL-3.0-only")
-    set_sourcedir(path.join(os.scriptdir(), "../../../Libs/Logger"))
+    set_sourcedir(path.join(os.scriptdir(), "../../../libs/lattice-logger"))
     add_deps("lattice-tools")
     add_configs("shared", {description = "Build a shared library", default = true, type = "boolean", readonly = true})
-    add_links("Logger")
+    add_links("lattice-logger")
 
     -- Consumers must also run directly, outside xmake's injected library path.
     on_load(function (package)
@@ -14,7 +14,7 @@ package("lattice-logger")
     end)
 
     on_install(function (package)
-        local build_root = path.join(package:builddir(), "source", "Logger")
+        local build_root = path.join(package:builddir(), "source", "lattice-logger")
         os.tryrm(build_root)
         os.mkdir(build_root)
         os.cp("*", build_root)
@@ -23,10 +23,10 @@ package("lattice-logger")
         io.writefile(path.join(build_root, "xmake.lua"),
             'set_languages("c++23")\nadd_rules("mode.debug", "mode.release")\nadd_requires("lattice-tools")\n' .. script)
         os.cd(build_root)
-        import("package.tools.xmake").install(package, {}, {target = "Logger"})
+        import("package.tools.xmake").install(package, {}, {target = "lattice-logger"})
     end)
     on_test(function (package)
         assert(package:check_cxxsnippets({test = [[
             void test() { Logger::info("consumer", "standalone logger"); }
-        ]]}, {configs = {languages = "c++23"}, includes = "Logger/Logger.hpp"}))
+        ]]}, {configs = {languages = "c++23"}, includes = "lattice-logger/Logger.hpp"}))
     end)

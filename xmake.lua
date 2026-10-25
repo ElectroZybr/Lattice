@@ -21,10 +21,10 @@ option_end()
 if has_config("lattice_external_tools") then
     add_requires("lattice-logger", "lattice-sysinfo")
     if has_config("lattice_build_extras") then
-        add_requires("lattice-bmrunner")
+        add_requires("lbm-runner")
     end
 else
-    includes("Libs/Tools", "Libs/Logger", "Libs/SysInfo", "Libs/BmRunner", "Libs/BmHistory", "Libs/Lbm")
+    includes("libs/lattice-tools", "libs/lattice-logger", "libs/lattice-sysinfo", "libs/lbm-runner", "libs/lbm-history", "libs/lbm")
 end
 
 target("Lattice")
@@ -33,17 +33,17 @@ target("Lattice")
     set_symbols("hidden")
     add_defines("LATTICE_BUILDING_LIBRARY")
 
-    add_files("Kernel/**.cpp")
-    add_files("Tools/*.cpp")
+    add_files("kernel/**.cpp")
+    add_files("tools/*.cpp")
     if has_config("lattice_external_tools") then
         add_packages("lattice-logger", "lattice-sysinfo", {public = true})
     else
-        add_deps("Logger", "SysInfo", {public = true})
+        add_deps("lattice-logger", "lattice-sysinfo", {public = true})
     end
 
     add_headerfiles("Lattice.hpp", "Composition.hpp", {prefixdir = "Lattice"})
-    add_headerfiles("Kernel/(**.hpp)", {prefixdir = "Lattice/Kernel"})
-    add_headerfiles("Tools/(**.hpp)", {prefixdir = "Lattice/Tools"})
+    add_headerfiles("kernel/(**.hpp)", {prefixdir = "Lattice/kernel"})
+    add_headerfiles("tools/(**.hpp)", {prefixdir = "Lattice/tools"})
 
     add_includedirs("..", {public = true})
 
@@ -68,9 +68,9 @@ if has_config("lattice_build_extras") then
 
         add_deps("Lattice")
         if has_config("lattice_external_tools") then
-            add_packages("lattice-bmrunner")
+            add_packages("lbm-runner")
         else
-            add_deps("BmRunner")
+            add_deps("lbm-runner")
         end
 
     -- сборка бенчмарков
@@ -81,28 +81,8 @@ if has_config("lattice_build_extras") then
 
         add_deps("Lattice")
         if has_config("lattice_external_tools") then
-            add_packages("lattice-bmrunner")
+            add_packages("lbm-runner")
         else
-            add_deps("BmRunner")
+            add_deps("lbm-runner")
         end
-end
-
--- Existing utility tests linked directly to tooling, with no runtime.
-if has_config("lattice_build_extras") and not has_config("lattice_external_tools") then
-    for name, files in pairs({
-        Logger = {"LoggerScope"},
-        SysInfo = {"SysInfoOutput"},
-        BmRunner = {"BmRunner", "BmOutput", "Analysis", "Cache", "PerfEvent", "MemoryTraffic", "Trace", "Work", "Results"},
-        BmHistory = {"BmHistory"}
-    }) do
-        target(name .. ".tests")
-            set_kind("binary")
-            add_files("Libs/tests/main.cpp", "Tools/Tests.cpp")
-            add_defines("LATTICE_BUILDING_LIBRARY")
-            add_includedirs("..")
-            add_deps(name)
-            for _, file in ipairs(files) do
-                add_files("tests/" .. file .. "_tests.cpp")
-            end
-    end
 end

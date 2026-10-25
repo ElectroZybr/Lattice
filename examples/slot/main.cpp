@@ -1,7 +1,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <Lattice/Composition.hpp>
-#include <Lattice/Kernel/Context.hpp>
+#include <Lattice/kernel/Context.hpp>
 #include "model.hpp"
 
 extern "C" void compose(NodeBuild);

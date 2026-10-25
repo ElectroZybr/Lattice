@@ -1,11 +1,13 @@
 # Lattice
 
-Небольшой C++ runtime для композиции объектов, владения, контекстного выбора
-и управления жизненным циклом. Реализации остаются обычными C++ классами.
+A small C++ runtime for composing plain C++ objects into an ownership tree: dependencies,
+contextual choice (Context, Focus, slots), lifecycle, packages, services, exports and
+pipelines. Implementations stay ordinary C++ classes.
 
-- [Документация по структуре кода](Docs/ru/Main.md)
-- [Композиция, Context и правила пересборки](Docs/ru/Kernel/Composition.md)
-- [Рабочий пример](examples/composition/README.md)
-- [Slot: выбор композиции реализации](examples/slot/README.md)
+Documentation is in Russian for now: [docs/ru/README.md](docs/ru/README.md).
 
-- [Переиспользуемые Logger, SysInfo и BmRunner](Libs/README.md)
+- [Architecture](docs/ru/articles/Architecture.md)
+- [Composition API](docs/ru/articles/Composition.md) and [examples](examples/README.md)
+- [Build](docs/ru/Build.md)
+- [Development rules](docs/ru/Rules.md) and [antipatterns](docs/ru/Antipatterns.md)
+- [Reusable libraries: lattice-tools, lattice-logger, lattice-sysinfo, lbm-runner, lbm-history, lbm](libs/README.md)

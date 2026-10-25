@@ -1,8 +1,8 @@
 #include <Lattice/tests/RuntimeFixture.hpp>
-#include <Lattice/Tools/Tests.hpp>
-#include <Lattice/Tools/TextFormatter.hpp>
-#include <Lattice/Tools/TextPattern.hpp>
-#include <Logger/Logger.hpp>
+#include <Lattice/tools/Tests.hpp>
+#include <Lattice/tools/TextFormatter.hpp>
+#include <Lattice/tools/TextPattern.hpp>
+#include <lattice-logger/Logger.hpp>
 
 #include <vector>
 

@@ -1,6 +1,6 @@
 #include <Lattice/Lattice.hpp>
-#include <BmRunner/BigO.hpp>
-#include <SysInfo/SystemInfo.hpp>
+#include <lbm-runner/BigO.hpp>
+#include <lattice-sysinfo/SystemInfo.hpp>
 
 int main() {
     Lattice::Blueprints blueprints;

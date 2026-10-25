@@ -1,5 +1,5 @@
-#include <Lattice/Kernel/Blueprints.hpp>
-#include <Lattice/Tools/Tests.hpp>
+#include <Lattice/kernel/Blueprints.hpp>
+#include <Lattice/tools/Tests.hpp>
 
 namespace Lattice {
 namespace {

@@ -1,8 +1,7 @@
 #pragma once
 
 // A package exports extern "C" void compose(NodeBuild root) and its metadata
-// extern "C" const Lattice::Package lattice_package{...}.
-#include <Lattice/Kernel/NodeViews.hpp>
-#include <Lattice/Kernel/TableExports.hpp>
-#include <Lattice/Kernel/PipelineExports.hpp>
-#include <Lattice/Kernel/Package.hpp>
+#include <Lattice/kernel/NodeViews.hpp>
+#include <Lattice/kernel/TableExports.hpp>
+#include <Lattice/kernel/PipelineExports.hpp>
+#include <Lattice/kernel/Package.hpp>

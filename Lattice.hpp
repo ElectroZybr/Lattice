@@ -1,20 +1,20 @@
 #pragma once
 
 // Kernel
-#include <Lattice/Kernel/ServiceAPI.hpp>
-#include <Lattice/Kernel/Blueprints.hpp>
-#include <Lattice/Kernel/BasicTable.hpp>
-#include <Lattice/Kernel/TableExports.hpp>
-#include <Lattice/Kernel/NodeHandlers.hpp>
-#include <Lattice/Kernel/TreeView.hpp>
-#include <Lattice/Kernel/Exports.hpp>
-#include <Lattice/Kernel/NodeViews.hpp>
+#include <Lattice/kernel/ServiceAPI.hpp>
+#include <Lattice/kernel/Blueprints.hpp>
+#include <Lattice/kernel/BasicTable.hpp>
+#include <Lattice/kernel/TableExports.hpp>
+#include <Lattice/kernel/NodeHandlers.hpp>
+#include <Lattice/kernel/TreeView.hpp>
+#include <Lattice/kernel/Exports.hpp>
+#include <Lattice/kernel/NodeViews.hpp>
 
 // Tools
-#include <Lattice/Tools/Exception.hpp>
-#include <Logger/Logger.hpp>
-#include <Lattice/Tools/TextStyle.hpp>
-#include <Lattice/Tools/TextTheme.hpp>
-#include <Lattice/Tools/TextPattern.hpp>
-#include <Lattice/Tools/TableFormatter.hpp>
-#include <Lattice/Tools/TreeFormatter.hpp>
+#include <Lattice/tools/Exception.hpp>
+#include <lattice-logger/Logger.hpp>
+#include <Lattice/tools/TextStyle.hpp>
+#include <Lattice/tools/TextTheme.hpp>
+#include <Lattice/tools/TextPattern.hpp>
+#include <Lattice/tools/TableFormatter.hpp>
+#include <Lattice/tools/TreeFormatter.hpp>

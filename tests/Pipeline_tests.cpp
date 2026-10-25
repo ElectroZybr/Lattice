@@ -2,7 +2,7 @@
 #include <vector>
 #include <Lattice/Composition.hpp>
 #include <Lattice/tests/RuntimeFixture.hpp>
-#include <Lattice/Tools/Tests.hpp>
+#include <Lattice/tools/Tests.hpp>
 
 namespace Lattice::PipelineTests {
 namespace {

@@ -4,8 +4,8 @@
 #include <stdexcept>
 
 #include <Lattice/Composition.hpp>
-#include <Lattice/Kernel/Context.hpp>
-#include <Lattice/Kernel/PackageManager.hpp>
+#include <Lattice/kernel/Context.hpp>
+#include <Lattice/kernel/PackageManager.hpp>
 #include "model.hpp"
 
 namespace {

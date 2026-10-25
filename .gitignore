@@ -9,7 +9,6 @@
 
 # Obsidian
 **/.obsidian/
-AGENTS.md
 
 # Binaries and libraries
 *.exe
@@ -32,3 +31,4 @@ compile_commands.json
 
 # Python
 __pycache__/
+lbm-results/

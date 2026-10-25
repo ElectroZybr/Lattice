@@ -4,7 +4,7 @@ set_languages("c++23")
 
 add_rules("mode.debug", "mode.release")
 add_repositories("lattice-local " .. path.absolute("../..", os.scriptdir()))
-add_requires("glm 1.0.1", "lattice-bmrunner")
+add_requires("glm 1.0.1", "lbm-runner")
 
 option("lattice_prefix")
     set_showmenu(true)
@@ -20,7 +20,7 @@ target("Lattice.consumer")
     add_includedirs(path.join(lattice_prefix, "include"))
     add_linkdirs(path.join(lattice_prefix, "lib"))
     add_links("Lattice")
-    add_packages("glm", "lattice-bmrunner")
+    add_packages("glm", "lbm-runner")
 
     if is_plat("linux") then
         add_syslinks("dl", "pthread")

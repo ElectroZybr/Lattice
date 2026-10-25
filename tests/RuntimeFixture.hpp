@@ -1,11 +1,11 @@
 #pragma once
 
-#include "Lattice/Kernel/BasicTable.hpp"
-#include "Lattice/Kernel/Context.hpp"
-#include "Lattice/Kernel/DLLoader.hpp"
-#include "Lattice/Kernel/NodeViews.hpp"
-#include "Lattice/Kernel/PackageManager.hpp"
-#include "Lattice/Tools/Fixture.hpp"
+#include "Lattice/kernel/BasicTable.hpp"
+#include "Lattice/kernel/Context.hpp"
+#include "Lattice/kernel/DLLoader.hpp"
+#include "Lattice/kernel/NodeViews.hpp"
+#include "Lattice/kernel/PackageManager.hpp"
+#include "Lattice/tools/Fixture.hpp"
 
 namespace Lattice {
 

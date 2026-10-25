@@ -1,6 +1,6 @@
-#include <Lattice/Tools/ObjectRegistry.hpp>
+#include <Lattice/tools/ObjectRegistry.hpp>
 #include <Lattice/tests/RuntimeFixture.hpp>
-#include <Lattice/Tools/Tests.hpp>
+#include <Lattice/tools/Tests.hpp>
 
 #include <limits>
 #include <string>

@@ -29,8 +29,8 @@ package("lattice")
         -- standalone project's locked repository for every consumer build.
         os.cp(path.join(source_root, "Lattice.hpp"), build_root)
         os.cp(path.join(source_root, "Composition.hpp"), build_root)
-        os.cp(path.join(source_root, "Kernel"), build_root)
-        os.cp(path.join(source_root, "Tools"), build_root)
+        os.cp(path.join(source_root, "kernel"), build_root)
+        os.cp(path.join(source_root, "tools"), build_root)
 
         os.cd(build_root)
         import("package.tools.xmake").install(package, {

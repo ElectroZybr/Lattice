@@ -2,8 +2,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include <BmRunner/Benchmarks.hpp>
-#include <BmRunner/Metrics.hpp>
+#include <lbm-runner/Benchmarks.hpp>
+#include <lbm-runner/Metrics.hpp>
 
 using namespace Lattice;
 using namespace Lattice::Benchmarks;
