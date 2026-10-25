@@ -284,7 +284,7 @@ TEST(Exports_ExecuteOnRoutesThroughQueue, RuntimeFixture,
     const auto action = owned.action("bump", &Owned::bump);
     REQUIRE(fixture.run_ctx.nodes.dependencies.retained(owned.id(), queue.id()));
 
-    exports.set(param, 2.5);
+    REQUIRE(exports.set(param, 2.5));
     REQUIRE(owned->value == 2.5f && queue->calls == 1);
     REQUIRE(exports.value<double>(param) == 2.5 && queue->calls == 2);
     exports.invoke(action);

@@ -20,8 +20,21 @@ xmake build -y
 xmake build -y lbm-runner.tests && xmake run lbm-runner.tests
 ```
 
-Запуск `Lattice.tests` пока не описан — пункт в
-[плане ядра](plans/Kernel.md).
+`Lattice.tests` запускается из каталога над ядром: тесты загрузки пакетов ищут
+`Lattice/tests/TestPackages/...` относительно него.
+
+```sh
+xmake build -y Lattice.tests && (cd .. && Lattice/build/linux/x86_64/release/Lattice.tests)
+```
+
+## Бенчи
+
+`Lattice.bench` — горячие пути ядра (BmRunner). С историей результатов:
+
+```sh
+lbm run Lattice Exports --save -m "что изменилось"
+lbm compare
+```
 
 ## Примеры
 

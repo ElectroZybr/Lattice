@@ -166,7 +166,7 @@ TEST(Composition_ExportsBelongToTheirObject, RuntimeFixture) {
     consumer.action("step", &ExportedNumber::step);
     const auto branchId = branch.id();
     REQUIRE(!nodes.dependencies.retained(branchId, consumer.id()));
-    nodes.exports.set(nodes.exports.find(consumer.id(), "value"), int64_t(17));
+    REQUIRE(nodes.exports.set(nodes.exports.find(consumer.id(), "value"), int64_t(17)));
     REQUIRE(consumer->value == 17);
     nodes.ops.retireBranch(provider.id());
     REQUIRE(nodes.exports.find(consumer.id(), "step") == InvalidExportId);
@@ -379,7 +379,7 @@ TEST(Composition_ObjectExportsSupportArgumentsAndConstMethods, RuntimeFixture) {
     auto action = object.action("add", &ExportMethods::add);
     object.action("read", &ExportMethods::read);
     auto& exports = fixture.run_ctx.nodes.exports;
-    exports.set(param, int64_t(3));
+    REQUIRE(exports.set(param, int64_t(3)));
     auto resolved = exports.resolve(action);
     ActionContext context{object.id()};
     const std::vector<Value> arguments{Value{int64_t(4)}};
@@ -459,7 +459,7 @@ TEST(Composition_ObjectActionsReceiveContextAndCanBeGlobal, RuntimeFixture) {
     REQUIRE(std::get<Value>(showContext.output().front()).get<std::string>() == "shown");
     REQUIRE(nodes.exports.find(object.id(), "ping") != InvalidExportId);
 
-    nodes.exports.set(prompt, std::string{"$"});
+    REQUIRE(nodes.exports.set(prompt, std::string{"$"}));
     REQUIRE(object->style.prompt == "$");
     REQUIRE(nodes.exports.find(object.id(), "prompt") == prompt);
 

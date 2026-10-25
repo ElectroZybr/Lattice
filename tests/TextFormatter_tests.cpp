@@ -22,7 +22,7 @@ TEST(TextFormatter_StyleParameterCodec, RuntimeFixture,
     const ExportId id = fixture.build(fixture.root).param("style", style);
 
     REQUIRE(fixture.run_ctx.nodes.exports.value(id).get<std::string>() == "#7aa2f7 bold");
-    fixture.run_ctx.nodes.exports.set(id, Value{"#f7768e dim"});
+    REQUIRE(fixture.run_ctx.nodes.exports.set(id, Value{"#f7768e dim"}));
     REQUIRE(style == (TextStyle::Dim | TextStyle::rgb(0xf7768e)));
 }
 

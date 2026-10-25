@@ -58,11 +58,16 @@ public:
     ObjectBuild& operator=(ObjectBuild&&) = delete;
 
     Ref<T> ref() const;
-    template<class Value, class Owner> ExportId param(std::string_view name, Value Owner::* member);
+    template<class Field, class Owner> ParamBuild<Field> param(std::string_view name, Field Owner::* member);
     /// Export a value that lives inside this object (nested field, container element).
-    template<class Value> ExportId param(std::string_view name, Value& value);
+    template<class Field> ParamBuild<Field> param(std::string_view name, Field& value);
+    /// A field written through its own setter: a method or a callable (T&, const Field&)
+    /// returning ParamResult — apply the value or refuse it. Rules, if any, run first.
+    template<class Field, class Owner, class Setter>
+    ParamBuild<Field> param(std::string_view name, Field Owner::* member, Setter&& setter);
     /// Run this object's exports (params, actions, tables) on the thread of `queue`:
-    /// `queue->call(work)` runs work there and returns when it is done. Declare it
+    /// `queue->call(work)` runs work there and returns when it is done; with
+    /// `queue->post(work)` plain param writes are handed over without waiting. Declare it
     /// before the exports; the object then depends on the queue's node.
     template<class Queue> void executeOn(const ObjectBuild<Queue>& queue);
     // Methods may take ActionContext& as their first parameter.

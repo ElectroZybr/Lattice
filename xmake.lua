@@ -58,9 +58,9 @@ if has_config("lattice_build_extras") then
     includes("examples/slot")
     -- сборка тестов
     target("Lattice.tests")
-        set_kind("shared")
+        set_kind("binary")
 
-        add_files("tests/*.cpp")
+        add_files("tests/*.cpp", "libs/tests/main.cpp")
 
         for _, dir in ipairs(os.dirs("tests/TestPackages/*")) do
             includes(dir)
@@ -75,7 +75,7 @@ if has_config("lattice_build_extras") then
 
     -- сборка бенчмарков
     target("Lattice.bench")
-        set_kind("shared")
+        set_kind("binary")
 
         add_files("bench/*.cpp")
 

@@ -215,11 +215,12 @@ TEST(Exports_ExplicitEditsAndRawWrites, RuntimeFixture) {
         changes.push_back(change);
     });
     auto resolved = exports.resolve(id);
-    resolved.set(resolved.object, Value{int64_t(2)});
+    REQUIRE(resolved.set(resolved.object, Value{int64_t(2)}));
     REQUIRE(changes.empty());
-    try { exports.set(id, Value{"invalid"}); } catch (const std::exception&) {}
+    const auto refused = exports.set(id, Value{"invalid"});
+    REQUIRE(!refused && refused.rejection().code == ParamError::Type);
     REQUIRE(value == 2 && changes.empty());
-    exports.set(id, Value{int64_t(3)});
+    REQUIRE(exports.set(id, Value{int64_t(3)}));
     REQUIRE(value == 3);
     REQUIRE(changes.size() == 1 && changes.back() == ParamChange::Set);
     exports.reset(id);
@@ -228,8 +229,30 @@ TEST(Exports_ExplicitEditsAndRawWrites, RuntimeFixture) {
     REQUIRE(changes.back() == ParamChange::Remove);
     exports.unobserveParameters(observer);
     const auto other = fixture.build(fixture.root).param("other", value);
-    exports.set(other, Value{int64_t(4)});
+    REQUIRE(exports.set(other, Value{int64_t(4)}));
     REQUIRE(changes.size() == 3);
+}
+
+TEST(Exports_UnobserveWhileNotifying, RuntimeFixture,
+    "Наблюдатель может снять себя и другого во время уведомления; добавленный ждёт следующего.") {
+    auto& exports = fixture.run_ctx.nodes.exports;
+    int value = 0;
+    const auto id = fixture.build(fixture.root).param("value", value);
+    int first = 0, second = 0, late = 0;
+    uint64_t firstToken = 0, secondToken = 0, lateToken = 0;
+    firstToken = exports.observeParameters([&](ExportId, ParamChange) {
+        ++first;
+        exports.unobserveParameters(firstToken);
+        exports.unobserveParameters(secondToken);
+        lateToken = exports.observeParameters([&](ExportId, ParamChange) { ++late; });
+    });
+    secondToken = exports.observeParameters([&](ExportId, ParamChange) { ++second; });
+
+    REQUIRE(exports.set(id, int64_t(1)));
+    REQUIRE(first == 1 && second == 0 && late == 0);
+    REQUIRE(exports.set(id, int64_t(2)));
+    REQUIRE(first == 1 && second == 0 && late == 1);
+    exports.unobserveParameters(lateToken);
 }
 
 }

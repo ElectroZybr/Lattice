@@ -77,7 +77,7 @@ int main(int argc, char** argv) {
         std::cout << "Focus changed to cpu; existing fast still uses gpu\n";
 
         // Both runs export 'dt', identified by (owner, name).
-        nodes.exports.set(nodes.exports.find(fastIntegrator.id(), "dt"), 0.5);
+        check(static_cast<bool>(nodes.exports.set(nodes.exports.find(fastIntegrator.id(), "dt"), 0.5)), "dt write refused");
         check(slowIntegrator->dt == 0.25, "Changing fast dt affected slow dt");
 
         // Remove a consumer branch. Shared providers and the other run survive.

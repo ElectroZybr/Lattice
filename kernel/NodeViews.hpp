@@ -142,8 +142,13 @@ public:
     ExportsView() = default;
     explicit ExportsView(Lattice::NodeSystem& nodeSystem) : nodeSystem_(&nodeSystem) {}
 
-    void set(const Lattice::ResolvedExport& target, const Lattice::Value& value) const {
-        nodeSystem_->exports.set(target.id, value);
+    Lattice::ParamResult set(const Lattice::ResolvedExport& target, const Lattice::Value& value) const {
+        return nodeSystem_->exports.set(target.id, value);
+    }
+
+    /// Rules of a param (range, choices, length, own setter); empty when it has none.
+    Lattice::ParamRules rules(Lattice::ExportId id) const {
+        return nodeSystem_->exports.rules(id);
     }
 
     // Removes an explicit edit from observers; does not restore object state.
@@ -534,19 +539,19 @@ public:
     }
 
     template<typename T>
-    Lattice::ExportId param(std::string_view name, T& value) {
+    Lattice::ParamBuild<T> param(std::string_view name, T& value) {
         check();
         const auto id = nodeSystem_.exports.param(id_, name, value);
         registerLocalExport(name);
-        return id;
+        return {nodeSystem_.exports, id};
     }
 
     template<typename T>
-    Lattice::ExportId globalParam(std::string_view name, T& value) {
+    Lattice::ParamBuild<T> globalParam(std::string_view name, T& value) {
         check();
         const auto id = nodeSystem_.exports.param(id_, name, value);
         registerGlobalExport(name);
-        return id;
+        return {nodeSystem_.exports, id};
     }
 
     template<typename... Args, typename F>
@@ -988,17 +993,33 @@ ExportId objectAction(Ref<T> object, std::string_view name, Member member) {
 }
 
 template<class T>
-template<class Value, class Owner>
-ExportId ObjectBuild<T>::param(std::string_view name, Value Owner::* member) {
+template<class Field, class Owner>
+ParamBuild<Field> ObjectBuild<T>::param(std::string_view name, Field Owner::* member) {
     auto object = ref();
     return ::NodeBuild{object.id(), *object.runtime()}.param(name, (*object).*member);
 }
 
 template<class T>
-template<class Value>
-ExportId ObjectBuild<T>::param(std::string_view name, Value& value) {
+template<class Field>
+ParamBuild<Field> ObjectBuild<T>::param(std::string_view name, Field& value) {
     auto object = ref();
     return ::NodeBuild{object.id(), *object.runtime()}.param(name, value);
+}
+
+template<class T>
+template<class Field, class Owner, class Setter>
+ParamBuild<Field> ObjectBuild<T>::param(std::string_view name, Field Owner::* member, Setter&& setter) {
+    using Apply = std::decay_t<Setter>;
+    static_assert(std::is_invocable_v<Apply&, T&, const Field&>,
+        "A param setter takes (T&, const Field&): a method of the object or a callable");
+    static_assert(std::is_same_v<std::invoke_result_t<Apply&, T&, const Field&>, ParamResult>,
+        "A param setter returns ParamResult: apply the value or refuse it");
+    auto build = param(name, member);
+    T* object = &*ref();
+    build.setter([object, apply = Apply(std::forward<Setter>(setter))](const Field& value) mutable {
+        return std::invoke(apply, *object, value);
+    });
+    return build;
 }
 
 template<class T>
@@ -1010,9 +1031,12 @@ void ObjectBuild<T>::executeOn(const ObjectBuild<Queue>& queue) {
     // The object's exports run through the queue: it must outlive them.
     object.runtime()->dependencies.retain(object.id(), target.id());
     Queue* commands = target.get();
+    std::function<void(std::function<void()>)> post;
+    if constexpr (requires(std::function<void()> work) { commands->post(std::move(work)); })
+        post = [commands](std::function<void()> work) { commands->post(std::move(work)); };
     object.runtime()->exports.executeOn(object.id(), [commands](const std::function<void()>& work) {
         commands->call([&work] { work(); });
-    });
+    }, std::move(post));
 }
 
 template<class T>

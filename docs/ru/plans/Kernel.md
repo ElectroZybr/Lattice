@@ -7,6 +7,6 @@
 - [x] Папки и библиотеки в нижнем регистре: `docs`, `libs`, `kernel`, `tools`; `lattice-tools`, `lattice-logger`, `lattice-sysinfo`, `lbm-runner`, `lbm-history`, `lbm`; пакет `lattice-bmrunner` → `lbm-runner`
 - [ ] Имя шаблонного типа в дереве: `CallStage<Verlet>`, а не `Verlet>`
 - [x] `Lattice.tests` собирается: тесты библиотек переехали в `libs/<имя>/tests`, корневой `tests/` — только ядро
-- [ ] Описать запуск `Lattice.tests` в [сборке](../Build.md)
+- [x] Описать запуск `Lattice.tests` в [сборке](../Build.md): цель — бинарник
 - [ ] Вставка ребёнка в позицию и перемещение (порядок стадий конвейера из CLI и GUI) — когда появится сценарий
 - [ ] Очередь команд у сервиса: `idle` выполняет команды, `executeOn` по умолчанию — поток сервиса-владельца (обсуждается)

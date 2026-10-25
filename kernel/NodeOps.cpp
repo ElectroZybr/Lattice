@@ -474,6 +474,8 @@ void NodeOps::clearContents(NodeId id) {
     const auto children = std::vector<NodeId>(nodeSystem_.registry.children(id).begin(), nodeSystem_.registry.children(id).end());
 
     const auto object = nodeSystem_.registry.require(id).object;
+    // Writes handed to the object's thread land before the object goes.
+    nodeSystem_.exports.settle(id);
 
     if (object.ptr) {
         const auto ops = nodeSystem_.blueprints.require(object.bp).meta.ops;
