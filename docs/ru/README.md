@@ -19,6 +19,7 @@ Lattice отвечает за дерево и владение, контекст
 | Собрать ядро, тесты, примеры, `lbm` | [Сборка](Build.md) |
 | Менять ядро | [Правила](Rules.md), затем [антипаттерны](Antipatterns.md) |
 | Разобраться в словах | [Термины](articles/Glossary.md) |
+| Найти и запустить тесты, получить компактный отчёт | [Тесты и ltest](articles/Testing.md) |
 | Мерить производительность | [BmRunner](articles/BmRunner.md), [история бенчмарков](articles/BmHistory.md) |
 | Узнать, что делается | [Планы](plans/README.md) |
 
@@ -48,7 +49,7 @@ README библиотек и примеров лежат рядом с кодо�
 ```text
 kernel/            дерево, Blueprints, Context, создание и retire, экспорты, пакеты, конвейеры
 tools/             форматирование ядра
-libs/              библиотеки без runtime: lattice-tools, lattice-test, lattice-logger, lattice-sysinfo, lbm-runner, lbm-history, lbm
+libs/              библиотеки без runtime: lattice-tools, lattice-test, ltest, lattice-logger, lattice-sysinfo, lbm-runner, lbm-history, lbm
 examples/          исполняемые примеры композиции и слотов
 tests/             проверки инвариантов ядра и тестовые пакеты (тесты библиотек — в их папках)
 packages/l/        рецепты xmake-пакетов (lattice, lattice-tools, lattice-logger, …)

@@ -10,7 +10,7 @@ TEST(Package_Empty, RuntimeFixture,
     "Пустой пакет должен успешно загрузиться.")
 {
     fixture.packageManager.scanDirectory(
-        "Lattice/tests/TestPackages/Empty"
+        std::string(LATTICE_TEST_PACKAGES) + "/Empty"
     );
 
     fixture.packageManager.checkCandidates();
@@ -26,7 +26,7 @@ TEST(Package_MissingDependency, RuntimeFixture,
     "Пакет с отсутствующей зависимостью не должен попасть в очередь загрузки.")
 {
     fixture.packageManager.scanDirectory(
-        "Lattice/tests/TestPackages/MissingDependency"
+        std::string(LATTICE_TEST_PACKAGES) + "/MissingDependency"
     );
 
     fixture.packageManager.checkCandidates();
@@ -42,11 +42,11 @@ TEST(Package_DependencyOrder, RuntimeFixture,
     "Зависимость должна находиться в очереди загрузки раньше зависимого пакета.")
 {
     fixture.packageManager.scanDirectory(
-        "Lattice/tests/TestPackages/Provider"
+        std::string(LATTICE_TEST_PACKAGES) + "/Provider"
     );
 
     fixture.packageManager.scanDirectory(
-        "Lattice/tests/TestPackages/Consumer"
+        std::string(LATTICE_TEST_PACKAGES) + "/Consumer"
     );
 
     fixture.packageManager.checkCandidates();
@@ -63,11 +63,11 @@ TEST(Package_DependencyCycle, RuntimeFixture,
     "Циклическая зависимость должна быть обнаружена до регистрации пакетов.")
 {
     fixture.packageManager.scanDirectory(
-        "Lattice/tests/TestPackages/CycleA"
+        std::string(LATTICE_TEST_PACKAGES) + "/CycleA"
     );
 
     fixture.packageManager.scanDirectory(
-        "Lattice/tests/TestPackages/CycleB"
+        std::string(LATTICE_TEST_PACKAGES) + "/CycleB"
     );
 
     fixture.packageManager.checkCandidates();
@@ -88,7 +88,7 @@ TEST(Package_Provider, RuntimeFixture,
     "Пакет, предоставляющий API или компонент, должен успешно загрузиться.")
 {
     fixture.packageManager.scanDirectory(
-        "Lattice/tests/TestPackages/Provider"
+        std::string(LATTICE_TEST_PACKAGES) + "/Provider"
     );
 
     fixture.packageManager.checkCandidates();
@@ -105,11 +105,11 @@ TEST(Package_Consumer, RuntimeFixture,
     "Пакет с корректной зависимостью должен успешно загрузиться вместе с ней.")
 {
     fixture.packageManager.scanDirectory(
-        "Lattice/tests/TestPackages/Provider"
+        std::string(LATTICE_TEST_PACKAGES) + "/Provider"
     );
 
     fixture.packageManager.scanDirectory(
-        "Lattice/tests/TestPackages/Consumer"
+        std::string(LATTICE_TEST_PACKAGES) + "/Consumer"
     );
 
     fixture.packageManager.checkCandidates();
@@ -132,7 +132,7 @@ TEST(Package_NoCompose, RuntimeFixture,
     "Пакет без compose должен завершиться ошибкой загрузки.")
 {
     fixture.packageManager.scanDirectory(
-        "Lattice/tests/TestPackages/NoCompose"
+        std::string(LATTICE_TEST_PACKAGES) + "/NoCompose"
     );
 
     fixture.packageManager.checkCandidates();
@@ -148,11 +148,11 @@ TEST(Package_CheckCandidatesTwice, RuntimeFixture,
     "Повторная проверка пакетов не должна дублировать очередь загрузки.")
 {
     fixture.packageManager.scanDirectory(
-        "Lattice/tests/TestPackages/Provider"
+        std::string(LATTICE_TEST_PACKAGES) + "/Provider"
     );
 
     fixture.packageManager.scanDirectory(
-        "Lattice/tests/TestPackages/Consumer"
+        std::string(LATTICE_TEST_PACKAGES) + "/Consumer"
     );
 
     fixture.packageManager.checkCandidates();
@@ -170,7 +170,7 @@ TEST(Package_LoadEmptyOnlyOnce, RuntimeFixture,
     "Повторная загрузка уже загруженного пакета не должна создавать вторую библиотеку.")
 {
     fixture.packageManager.scanDirectory(
-        "Lattice/tests/TestPackages/Empty"
+        std::string(LATTICE_TEST_PACKAGES) + "/Empty"
     );
 
     fixture.packageManager.checkCandidates();
@@ -193,11 +193,11 @@ TEST(Package_DependencyLoad, RuntimeFixture,
     "Зависимость должна быть загружена до пакета, который от неё зависит.")
 {
     fixture.packageManager.scanDirectory(
-        "Lattice/tests/TestPackages/Provider"
+        std::string(LATTICE_TEST_PACKAGES) + "/Provider"
     );
 
     fixture.packageManager.scanDirectory(
-        "Lattice/tests/TestPackages/Consumer"
+        std::string(LATTICE_TEST_PACKAGES) + "/Consumer"
     );
 
     fixture.packageManager.checkCandidates();
@@ -223,14 +223,14 @@ TEST(Package_DependencyLoad, RuntimeFixture,
 TEST(Package_LibraryWithoutMetadataIsSkipped, RuntimeFixture,
     "Библиотека без lattice_package не считается пакетом.")
 {
-    fixture.packageManager.scanDirectory("Lattice/tests/TestPackages/NoMetadata");
+    fixture.packageManager.scanDirectory(std::string(LATTICE_TEST_PACKAGES) + "/NoMetadata");
     REQUIRE(fixture.packageManager.findCandidate("NoMetadata") == nullptr);
 }
 
 TEST(Package_MetadataIsTyped, RuntimeFixture,
     "Метаданные пакета читаются из скомпилированного объекта.")
 {
-    fixture.packageManager.scanDirectory("Lattice/tests/TestPackages/Consumer");
+    fixture.packageManager.scanDirectory(std::string(LATTICE_TEST_PACKAGES) + "/Consumer");
     auto* consumer = fixture.packageManager.findCandidate("Consumer");
     REQUIRE(consumer);
     REQUIRE(consumer->manifest.version == (Version{1, 0, 0}));

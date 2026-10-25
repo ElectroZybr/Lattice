@@ -59,7 +59,7 @@ Lattice        дерево, владение, blueprints, Context, lifecycle, �
 ## Библиотеки
 
 `libs/` — переиспользуемые библиотеки без runtime: lattice-tools (header-only утилиты и
-`Value`), lattice-test, lattice-logger, lattice-sysinfo, lbm-runner, lbm-history и инструмент `lbm`. Каждая ставится своим xmake-пакетом
+`Value`), lattice-test (проверки, результаты и стандартный main), ltest (запуск наборов), lattice-logger, lattice-sysinfo, lbm-runner, lbm-history и инструмент `lbm`. Каждая ставится своим xmake-пакетом
 — таблица в [libs/README.md](../../../libs/README.md).
 
 ## Примеры

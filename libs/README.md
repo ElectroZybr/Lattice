@@ -8,14 +8,15 @@
 | Библиотека | Цель | Пакет xmake | Заголовки |
 | --- | --- | --- | --- |
 | `lattice-tools/` | header-only | `lattice-tools` | `Lattice/tools/*.hpp`, `Lattice/kernel/Value.hpp` |
-| `lattice-test/` | shared | `lattice-test` | `lattice-test/Tests.hpp` |
+| `lattice-test/` | shared | `lattice-test` | `lattice-test/Tests.hpp`, `Results.hpp`, `Reports.hpp` |
+| `lattice-test-runner/` | binary `ltest` | `lattice-test-runner` | CLI поиска и запуска тестов, интеграция через JSON |
 | `lattice-logger/` | shared | `lattice-logger` | `lattice-logger/Logger.hpp`, `lattice-logger/LogScope.hpp` |
 | `lattice-sysinfo/` | shared | `lattice-sysinfo` | `lattice-sysinfo/SystemInfo.hpp`, `lattice-sysinfo/Output.hpp` |
 | `lbm-runner/` | shared | `lbm-runner` | `lbm-runner/Benchmarks.hpp`, `lbm-runner/Metrics.hpp` |
 | `lbm-history/` | static | — | `lbm-history/Repository.hpp`, `lbm-history/Statistics.hpp` |
 | `lbm/` | binary `lbm` | — (`xmake install-lbm`) | — |
 
-Зависимости: lattice-test → lattice-logger; lattice-logger → lattice-tools; lattice-sysinfo → lattice-logger; lbm-runner →
+Зависимости: lattice-test → lattice-tools; lattice-test-runner → lattice-test и lattice-logger; lattice-logger → lattice-tools; lattice-sysinfo → lattice-logger; lbm-runner →
 lattice-sysinfo и lattice-logger; lbm-history → lbm-runner; `lbm` (запуск наборов, история в
 git, сравнение, [проект](../docs/ru/articles/BmHistory.md)) → lbm-history. lattice-tools —
 header-only утилиты и тип данных `Value` (зависит от GLM). lattice-logger хранит sinks,

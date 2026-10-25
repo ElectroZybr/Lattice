@@ -13,15 +13,14 @@ xmake build -y
 ## Тесты
 
 - Тесты инвариантов ядра — бинарник `Lattice.tests` (`TEST`, библиотека `lattice-test`).
-- Тесты библиотек — в `libs/<имя>/tests`, бинарники `lattice-test.tests`, `lattice-logger.tests`,
+- Тесты библиотек — в `libs/<имя>/tests`, бинарники `lattice-test.tests`, `ltest.tests`, `lattice-logger.tests`,
   `lbm-runner.tests`, `lbm-history.tests`:
 
 ```sh
 xmake build -y lbm-runner.tests && xmake run lbm-runner.tests
 ```
 
-`Lattice.tests` запускается из каталога над ядром: тесты загрузки пакетов ищут
-`Lattice/tests/TestPackages/...` относительно него.
+`Lattice.tests` использует абсолютный путь тестовых пакетов, заданный при сборке.
 
 ```sh
 xmake build -y Lattice.tests && (cd .. && Lattice/build/linux/x86_64/release/Lattice.tests)
@@ -73,3 +72,16 @@ xmake build -y -r <цели>
 ```
 
 Тесты запускаются отдельными бинарниками; прежний runtime-режим `--tests` удалён.
+
+## ltest
+
+```sh
+xmake build -y ltest
+xmake install-ltest
+ltest list
+ltest run
+ltest run Lattice 'Package_*' --json
+```
+
+[Тесты и ltest](articles/Testing.md): общий main, фильтры, отдельные логи и машинный отчёт.
+Ядро тестируется из каталога проекта; пути тестовых пакетов заданы при сборке.

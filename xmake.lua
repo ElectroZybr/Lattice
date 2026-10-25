@@ -24,7 +24,7 @@ if has_config("lattice_external_tools") then
         add_requires("lbm-runner", "lattice-test")
     end
 else
-    includes("libs/lattice-test", "libs/lattice-tools", "libs/lattice-logger", "libs/lattice-sysinfo", "libs/lbm-runner", "libs/lbm-history", "libs/lbm")
+    includes("libs/ltest", "libs/lattice-test", "libs/lattice-tools", "libs/lattice-logger", "libs/lattice-sysinfo", "libs/lbm-runner", "libs/lbm-history", "libs/lbm")
 end
 
 target("Lattice")
@@ -60,7 +60,8 @@ if has_config("lattice_build_extras") then
     target("Lattice.tests")
         set_kind("binary")
 
-        add_files("tests/*.cpp", "libs/tests/main.cpp")
+        add_files("tests/*.cpp")
+        add_defines('LATTICE_TEST_PACKAGES="' .. path.absolute("tests/TestPackages") .. '"')
 
         for _, dir in ipairs(os.dirs("tests/TestPackages/*")) do
             includes(dir)
@@ -70,7 +71,7 @@ if has_config("lattice_build_extras") then
         if has_config("lattice_external_tools") then
             add_packages("lattice-test")
         else
-            add_deps("lattice-test")
+            add_deps("lattice-test-main")
         end
         if has_config("lattice_external_tools") then
             add_packages("lbm-runner")
