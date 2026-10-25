@@ -9,6 +9,13 @@
 
 namespace Lattice {
 
+/// Register `Compose` as the implementation `name` of the slot's API and select it.
+template<auto Compose, class API>
+bool choose(Slot<API>& slot, std::string_view name) {
+    slot.runtime()->blueprints.addImplementation(implementation<API, Compose>(name));
+    return slot.select(name);
+}
+
 struct RuntimeFixture : public Fixture {
     Context run_ctx;
     NodeId root = InvalidNodeId;

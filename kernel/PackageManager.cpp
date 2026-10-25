@@ -28,7 +28,8 @@ namespace Lattice {
             .id = std::string(package.id),
             .name = std::string(package.name.empty() ? package.id : package.name),
             .version = package.version,
-            .kernelApi = package.kernelApi
+            .kernelApi = package.kernelApi,
+            .implementations = {package.implementations.begin(), package.implementations.end()}
         };
         for (const auto& dependency : package.dependencyList()) {
             VersionRange range;
@@ -237,6 +238,8 @@ namespace Lattice {
             // configure is optional: a package without live wiring exports only compose.
             blueprints.addComposition(candidate->manifest.id, compose,
                 candidate->library->symbol<PackageConfigureFn>("configure"));
+            for (const auto& implementation : candidate->manifest.implementations)
+                blueprints.addImplementation(implementation, candidate->manifest.id);
         } catch (const std::exception& error) {
             blueprints = std::move(snapshot);
             Logger::error(tag, "Registration failed for '{}': {}", candidate->manifest.id, error.what());

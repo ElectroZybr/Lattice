@@ -54,6 +54,7 @@ NodeId NodeFactory::createNode(
 
         nodeSystem_.context.addCandidate(scope, role, previous);
         nodeSystem_.context.addCandidate(scope, role, id);
+        nodeSystem_.choices.offer(scope, role);
     }
 
     std::string label;
@@ -151,9 +152,24 @@ void NodeFactory::constructObject(NodeId id, BlueprintId implementation) {
 
     if (blueprint.meta.compose) {
         nodeSystem_.registry.require(id).object.bp = implementation;
+        const bool outermost = !nodeSystem_.ops.composing();
         nodeSystem_.ops.beginCompose(id);
         Composing composing{nodeSystem_.ops, id};
-        blueprint.meta.compose(nodeSystem_.builder.node(id));
+        try {
+            blueprint.meta.compose(nodeSystem_.builder.node(id));
+        } catch (const ChoiceRequired& required) {
+            if (!outermost) throw;
+            // The branch waits for the choice: its node stays, what it built goes.
+            auto relative = required.owner == InvalidNodeId || !nodeSystem_.registry.get(required.owner)
+                ? std::string{} : nodeSystem_.choices.relativeName(id, required.owner, required.name);
+            nodeSystem_.ops.clearContents(id);
+            nodeSystem_.dependencies.clearDependencies(id);
+            nodeSystem_.exports.remove(id);
+            if (const auto scope = nodeSystem_.context.findScope(id); scope != InvalidContextScopeId)
+                nodeSystem_.context.destroyScope(scope);
+            nodeSystem_.choices.defer(id, implementation, required, std::move(relative));
+            return;
+        }
         composing.done = true;
         nodeSystem_.ops.endCompose(id);
         return;
@@ -226,6 +242,8 @@ NodeId NodeFactory::slot(NodeId parent, BlueprintId api, std::string_view instan
     const ContextScopeId scope = nodeSystem_.context.createScope(parent);
 
     nodeSystem_.context.addCandidate(scope, role, id);
+    nodeSystem_.choices.offer(scope, role);
+    nodeSystem_.choices.declareSlot(id);
 
     return id;
 }
@@ -318,6 +336,7 @@ void NodeFactory::share(NodeId id, BlueprintId api) {
     const RoleId role = nodeSystem_.context.role(nodeSystem_.blueprints.require(api).name);
 
     nodeSystem_.context.addCandidate(scope, role, id);
+    nodeSystem_.choices.offer(scope, role);
 }
 
 NodeId NodeFactory::binding(NodeId parent, std::string_view name) {

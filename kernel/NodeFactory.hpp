@@ -23,6 +23,9 @@ class LATTICE_API NodeFactory {
     void constructObject(NodeId id, BlueprintId implementation);
 
 public:
+    /// Compose a pending branch again (Choices, once its choice is made).
+    void recompose(NodeId id, BlueprintId implementation) { constructObject(id, implementation); }
+
     NodeFactory(NodeSystem& nodeSystem)
         : nodeSystem_(nodeSystem) {}
 

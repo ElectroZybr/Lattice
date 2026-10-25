@@ -9,7 +9,30 @@
 #include <string>
 #include <string_view>
 
+class NodeBuild;
+class NodeConfigure;
+
 namespace Lattice {
+
+/**
+ * An implementation of a slot API, declared by its package in `lattice_package`:
+ *
+ *     constinit const Lattice::Implementation implementations[] = {
+ *         Lattice::implementation<Renderer, composeHardware>("Hardware"),
+ *     };
+ *     extern "C" constinit const Lattice::Package lattice_package{
+ *         .id = "Render", .version = {1, 0, 0}, .implementations = implementations,
+ *     };
+ *
+ * Every slot of that API sees it as a choice, named `Render::Hardware`.
+ */
+struct Implementation {
+    std::string_view api;
+    std::string_view name;
+    /// Builds the implementation on the slot node and returns that node.
+    uint32_t (*compose)(::NodeBuild&) = nullptr;
+    void (*configure)(::NodeConfigure) = nullptr;
+};
 
 struct Version {
     uint8_t major = 0;
@@ -57,6 +80,8 @@ struct Package {
     Version version{};
     PackageDependency dependencies[maxPackageDependencies]{};
     Version kernelApi = Lattice::kernelApi;
+    /// Slot implementations this package provides.
+    std::span<const Implementation> implementations{};
 
     /// Declared dependencies (the array is terminated by the first empty id).
     std::span<const PackageDependency> dependencyList() const noexcept {

@@ -81,6 +81,8 @@ struct PackageManifest {
     Version kernelApi{};
 
     std::vector<PackageRequirement> dependencies;
+    /// Names point into the package library: valid while it is loaded.
+    std::vector<Implementation> implementations;
 };
 
 enum class LoadStatus {

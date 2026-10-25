@@ -309,6 +309,8 @@ void NodeOps::maintain() {
     // Before destruction: configured objects drop retiring nodes while they still live.
     reconfigure();
     collectRetired();
+    // Slots: replacements whose old implementation has gone, single implementations.
+    nodeSystem_.choices.maintain();
     reconfigure();
     nodeSystem_.context.notifyChanges();
 }

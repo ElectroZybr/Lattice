@@ -193,12 +193,12 @@ TEST(Configure_SlotVariantHasConfigure, RuntimeFixture,
     auto& nodes = fixture.run_ctx.nodes;
     auto root = fixture.build(fixture.root);
     auto slot = root.addSlot<Holder>("holder");
-    slot.choice("ConfigureTests::Holder",
-        +[](NodeBuild& node) {
+    nodes.blueprints.addImplementation(implementation<Holder, +[](NodeBuild& node) {
             node.emplace<Item>("one", 1);
             return node.construct<HolderImpl, Holder>();
-        },
-        +[](NodeConfigure node) { node.self<Holder>()->items = node.children<Item>(); });
+        }>("ConfigureTests::Holder",
+        +[](NodeConfigure node) { node.self<Holder>()->items = node.children<Item>(); }));
+    slot.select("ConfigureTests::Holder");
     REQUIRE(slot->items.size() == 1);
 
     fixture.build(slot.id()).emplace<Item>("two", 2);

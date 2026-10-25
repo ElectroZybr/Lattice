@@ -101,7 +101,7 @@ TEST(ParamRules_RangeIncludesEnds, RuntimeFixture,
     REQUIRE(observed.changes == 2);
 
     const auto rules = exports.rules(dt);
-    REQUIRE(rules.min && rules.max && *rules.max == static_cast<double>(0.1f));
+    REQUIRE(rules.min && rules.max && *rules.min == 1e-6 && *rules.max == 0.1);
     REQUIRE(!rules.setter && rules.choices.empty());
 }
 

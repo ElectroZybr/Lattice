@@ -198,9 +198,7 @@ TEST(TreeView_NodeMetadata, RuntimeFixture,
     auto& nodes = fixture.run_ctx.nodes;
 
     auto slot = fixture.build(fixture.root).addSlot<TestAPI>("selected");
-    slot.choice("Tree::ImplA", +[](::NodeBuild& branch) {
-        return branch.construct<TestImplA, TestAPI>();
-    });
+    choose<+[](::NodeBuild& branch) { return branch.construct<TestImplA, TestAPI>(); }>(slot, "Tree::ImplA");
 
     const TreeNodeInfo info = fixture.build(fixture.root).tree().info(slot.id());
     REQUIRE(info.kind == NodeKind::Slot);

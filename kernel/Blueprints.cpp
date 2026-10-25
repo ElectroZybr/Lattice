@@ -30,6 +30,38 @@ BlueprintId Blueprints::addComposition(std::string_view name, void (*compose)(::
     return id;
 }
 
+BlueprintId Blueprints::addImplementation(const Implementation& implementation, std::string_view package) {
+    if (!implementation.compose || implementation.api.empty() || implementation.name.empty())
+        throw Exception<Blueprints>("Implementation needs an API, a name and a composition");
+    const std::string name = package.empty()
+        ? std::string(implementation.name)
+        : std::format("{}::{}", package, implementation.name);
+    BlueprintId api = find(implementation.api);
+    if (api == InvalidId) api = add(implementation.api);
+    const auto compose = implementation.compose;
+    if (const BlueprintId existing = find(name); existing != InvalidId) {
+        const auto& blueprint = require(existing);
+        const auto* function = blueprint.meta.composeSlot.target<uint32_t (*)(::NodeBuild&)>();
+        if (!function || *function != compose || blueprint.meta.configure != implementation.configure ||
+            !isA(existing, api))
+            throw Exception<Blueprints>("Implementation '{}' is already registered differently", name);
+        return existing;
+    }
+    Blueprint blueprint{.name = name, .bases = {api}};
+    blueprint.meta.composeSlot = compose;
+    blueprint.meta.configure = implementation.configure;
+    validateName(name);
+    return Base::create(std::move(blueprint), name);
+}
+
+std::vector<BlueprintId> Blueprints::implementations(BlueprintId api) const {
+    std::vector<BlueprintId> result;
+    for (BlueprintId id = 0; id < size(); ++id)
+        if (const auto* blueprint = get(id); blueprint && blueprint->meta.composeSlot && id != api && isA(id, api))
+            result.push_back(id);
+    return result;
+}
+
 BlueprintId Blueprints::add(std::string_view name, std::initializer_list<BlueprintId> bases) {
     validateName(name);
 

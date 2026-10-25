@@ -133,7 +133,7 @@ NodeId NodeQuery::shared(NodeId from, BlueprintId api) const {
     if (role == InvalidRoleId)
         throw Exception<NodeQuery>("Shared '{}' not found", blueprints_.require(api).name);
 
-    const auto result = context_.resolveInfo(context_.nearestScope(from), role);
+    const auto result = context_.use(context_.nearestScope(from), role);
     if (result.state == ContextResolutionState::Ambiguous) {
         std::string candidates;
         for (const NodeId candidate : result.candidates) {

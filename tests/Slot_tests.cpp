@@ -75,11 +75,11 @@ TEST(Slot_ChoiceReplacesImpl, RuntimeFixture,
     auto& nodes = fixture.run_ctx.nodes;
     auto slot = fixture.build(fixture.root).addSlot<SlotAPI>();
 
-    REQUIRE(slot.choice("Slot::Window", composeWindow));
+    REQUIRE(choose<composeWindow>(slot, "Slot::Window"));
     REQUIRE(slot->id() == 7);
     REQUIRE(nodes.query.collect(slot.id(), nodes.blueprints.id<SlotInput>()).size() == 1);
 
-    REQUIRE(slot.choice("Slot::B", composeB));
+    REQUIRE(choose<composeB>(slot, "Slot::B"));
 
     REQUIRE(slot->id() == 2);
     REQUIRE(nodes.query.collect(slot.id(), nodes.blueprints.id<SlotInput>()).empty());
@@ -91,7 +91,8 @@ TEST(Slot_RejectsWrongImpl, RuntimeFixture,
     auto slot = fixture.build(fixture.root).addSlot<SlotAPI>();
     const auto unrelated = fixture.run_ctx.blueprints.addComposition("Slot::Unrelated", +[](::NodeBuild) {});
 
-    REQUIRE(slotThrows([&] { slot.choice(unrelated); }));
+    REQUIRE(unrelated != InvalidBlueprintId);
+    REQUIRE(slotThrows([&] { slot.select("Slot::Unrelated"); }));
     REQUIRE(!slot.exists());
 }
 
@@ -100,9 +101,9 @@ TEST(Slot_ChoiceSameImpl, RuntimeFixture,
 {
     auto slot = fixture.build(fixture.root).addSlot<SlotAPI>();
 
-    slot.choice("Slot::A", composeA);
+    choose<composeA>(slot, "Slot::A");
     SlotAPI* first = slot.get();
-    REQUIRE(slot.choice("Slot::A", composeA));
+    REQUIRE(choose<composeA>(slot, "Slot::A"));
 
     REQUIRE(slot.get() == first);
 }
@@ -128,12 +129,12 @@ TEST(Slot_FocusTracksImplementation, RuntimeFixture,
 
     REQUIRE(!focus);
 
-    slot.choice("Slot::A", composeA);
+    choose<composeA>(slot, "Slot::A");
 
     REQUIRE(focus.id() == slot.id());
     REQUIRE(focus->id() == 1);
 
-    REQUIRE(slot.choice("Slot::B", composeB));
+    REQUIRE(choose<composeB>(slot, "Slot::B"));
 
     REQUIRE(focus.id() == slot.id());
     REQUIRE(focus->id() == 2);
@@ -142,7 +143,7 @@ TEST(Slot_FocusTracksImplementation, RuntimeFixture,
 TEST(Slot_RepeatedCreation, RuntimeFixture) {
     auto& nodes = fixture.run_ctx.nodes;
     auto first = fixture.build(fixture.root).addSlot<SlotAPI>();
-    first.choice("Slot::A", composeA);
+    choose<composeA>(first, "Slot::A");
     auto again = fixture.build(fixture.root).addSlot<SlotAPI>();
     REQUIRE(first.id() == again.id());
     REQUIRE(first.get() == again.get());
@@ -152,9 +153,9 @@ TEST(Slot_RepeatedCreation, RuntimeFixture) {
 TEST(Slot_AbstractChoicePreservesContents, RuntimeFixture) {
     auto& nodes = fixture.run_ctx.nodes;
     auto slot = fixture.build(fixture.root).addSlot<SlotAPI>();
-    slot.choice("Slot::Window", composeWindow);
+    choose<composeWindow>(slot, "Slot::Window");
     auto* previous = slot.get();
-    REQUIRE(slotThrows([&] { slot.choice(nodes.blueprints.id<SlotAPI>()); }));
+    REQUIRE(slotThrows([&] { slot.select(typeKey<SlotAPI>()); }));
     REQUIRE(slot.get() == previous);
     REQUIRE(nodes.registry.children(slot.id()).size() == 1);
 }
@@ -163,13 +164,13 @@ TEST(Slot_CompositionFailureClearsChildren, RuntimeFixture) {
     auto& nodes = fixture.run_ctx.nodes;
     auto slot = fixture.build(fixture.root).addSlot<SlotAPI>();
     auto focus = fixture.build(fixture.root).focus<SlotAPI>();
-    REQUIRE(slotThrows([&] { slot.choice("Slot::Throwing", composeThrowing); }));
+    REQUIRE(slotThrows([&] { choose<composeThrowing>(slot, "Slot::Throwing"); }));
     REQUIRE(!slot);
     REQUIRE(RollbackChild::alive == 0);
     REQUIRE(nodes.registry.children(slot.id()).empty());
     REQUIRE(focus.id() == slot.id());
     REQUIRE(!focus);
-    slot.choice("Slot::B", composeB);
+    choose<composeB>(slot, "Slot::B");
     REQUIRE(focus->id() == 2);
 }
 

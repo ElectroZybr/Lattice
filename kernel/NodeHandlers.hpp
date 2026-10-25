@@ -115,8 +115,11 @@ private:
 
 /**
  * Selects an implementation, unlike Focus which selects an existing instance.
- * A composed implementation returns its API object from its owned subtree.
- * choice() returns false while old contents retire; the caller retries explicitly.
+ *
+ * The choices are the implementations of T that packages declare (Implementation). A new
+ * slot is empty; one implementation fills it on first need (ref(), the end of the
+ * composition, maintain), several wait for select() or its choice param (config, CLI).
+ * select() returns false while the old implementation retires; maintain() finishes it.
  */
 template<typename T>
 class Slot {
@@ -131,16 +134,26 @@ public:
     T* operator->() const { return get(); }
     T& operator*() const { return *get(); }
     NodeId id() const noexcept { return id_; }
+    NodeSystem* runtime() const noexcept { return runtime_; }
     bool exists() const { return get() != nullptr; }
     explicit operator bool() const { return exists(); }
-    /// Snapshot of the selected object, suitable for constructor injection.
+    /// Snapshot of the selected object, suitable for constructor injection. An empty slot
+    /// with a single implementation fills itself first.
     Ref<T> ref() const;
-    bool choice(BlueprintId implementation);
-    /// Register a named composition inferred from an ordinary function's return handle.
-    /// Reusing a name with another function/API is an error.
-    template<class Result> bool choice(std::string_view name, Result (*compose)(::NodeBuild&),
-        void (*configure)(::NodeConfigure) = nullptr);
+    /// Choose an implementation by name: `Hardware` or `Package::Hardware`.
+    bool select(std::string_view name);
+
+    /// Composition of an Implementation: builds it on the slot and checks its API.
+    template<auto Compose> static uint32_t compose(::NodeBuild& branch);
 };
+
+/// An Implementation of API built by `Compose(NodeBuild&)`, which returns the object it
+/// constructs on the slot (`slot.construct<Impl, API>(...)`).
+template<class API, auto Compose>
+constexpr Implementation implementation(std::string_view name, void (*configure)(::NodeConfigure) = nullptr) {
+    return {.api = typeKey<API>(), .name = name, .compose = &Slot<API>::template compose<Compose>,
+        .configure = configure};
+}
 
 
 /**

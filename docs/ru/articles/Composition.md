@@ -64,14 +64,58 @@ fast.focus<Device>().reset();                  // убрать локальны�
 ```
 
 `reset` не удаляет кандидатов. Возобновляется обычное разрешение: родительский
-выбор, единственный кандидат либо ошибка неоднозначности. Кандидатные наборы и
+выбор, единственный кандидат либо ошибка неоднозначности.
+
+Единственный кандидат закрепляется при первой нужде (`Focus`, `mount`, `require`
+общего объекта, `focus` в `configure`): он становится target своего scope, и
+появившийся позже второй кандидат выбор не меняет. Уход закреплённого кандидата
+освобождает выбор. Неявное закрепление не уведомляет наблюдателей и не сохраняется
+в конфигурацию.
+
+Выбор роли открыт инструментам параметром на узле-владельце scope:
+`device = gpu ∈ {cpu, gpu}`. Параметр ничего не хранит — чтение, запись (`set` или
+`reset` для пустого значения) и варианты идут в Context. Он появляется у точки фокуса
+(`focus<T>()`, `focus<T>(ref)` в композиции) и у scope, где у роли два кандидата и
+больше. Имя — короткое имя типа с маленькой буквы (`Graphics::Device` → `device`),
+при занятом имени — `deviceFocus`; вариант — имя экземпляра, при совпадении
+`Type:name`. В CLI выбор фиксируется командой `device gpu`. Кандидатные наборы и
 явные targets наследуются ядром отдельно; правила реализованы в `NodeContext`.
 
 `branch.focus<T>(ref)` выбирает существующий экземпляр (`NodeId`) для контекстной роли.
-`Slot::choice` выбирает blueprint реализации (`BlueprintId`) и собирает её подветку.
-Для обычного кода используется `slot.choice("Package::Variant", composeVariant)`: функция
-принимает `NodeBuild&` слота, создаёт объект реализации на самом слоте
-(`slot.construct<Impl, API>(...)`; дети слота — части реализации) и возвращает его. Контракт замены и пример —
+Слот выбирает реализацию API. В композиции объявляется только он сам —
+`root.addSlot<Renderer>("renderer")`; варианты — реализации `Renderer`, которые пакеты
+объявляют в `lattice_package.implementations`:
+
+```cpp
+auto composeHardware(NodeBuild& slot) {               // объект — на самом слоте
+    return slot.construct<HardwareRenderer, Renderer>(slot.require<Palette>("palette"));
+}
+constinit const Lattice::Implementation implementations[] = {
+    Lattice::implementation<Renderer, composeHardware>("Hardware"),   // Render::Hardware
+};
+extern "C" constinit const Lattice::Package lattice_package{
+    .id = "Render", .version = {1, 0, 0}, .implementations = implementations,
+};
+```
+
+Новый слот пуст. Единственная реализация API заполняет его при первой нужде:
+`slot.ref()`, `require`, `mount`, `focus.ref()`, конец композиции (`Builder`), `maintain`. Несколько реализаций — слот ждёт
+явного выбора: `slot.select("Hardware")`, параметр выбора `renderer` на родителе слота
+(`renderer Hardware` в CLI, конфигурация). Догруженный позже пакет с ещё одной
+реализацией заполненный слот не меняет. Замена работающей реализации — retirement
+старой и сборка новой: `select` возвращает `false`, пока старая уходит, а `maintain`
+доводит замену сам.
+
+**Невыбранное требует выбора лениво.** Пока к пустому слоту или неоднозначной роли
+никто не обратился, это не ошибка. Обращение (`slot.ref()`, `require` слота, `mount`,
+`focus.ref()`) бросает `ChoiceRequired`: чей параметр, как называется, из чего выбирать.
+Самая внешняя композиция ветки его перехватывает: ветка остаётся пустым узлом и ждёт
+(`ExportsView::pending()`). Выбор внутри ветки получает заместитель на её узле с
+относительным именем (`renderer`, `view.renderer`); выбор снаружи (`device` корня) —
+пишется в свой параметр. После записи `maintain` собирает ветку заново, а выбор,
+сделанный в заместитель, становится записью в настоящий параметр слота или фокуса.
+
+Контракт замены и пример —
 [Slot и композиции реализаций](../../../examples/slot/README.md).
 Это разные операции. `branch.focus<T>(ref)` принимает handle существующего кандидата. Проверяются runtime,
 поколение NodeId, доступность объекта, совместимость с API и принадлежность к
@@ -109,8 +153,8 @@ auto renderer = run.emplace<Renderer>("renderer", device.ref());
 ## configure: связывание с текущим деревом
 
 Пакет может экспортировать рядом с `compose` необязательную функцию
-`extern "C" void configure(NodeConfigure root)`; вариант слота передаёт её третьим
-аргументом `choice`. Runtime вызывает её сразу после `compose` и затем лениво в
+`extern "C" void configure(NodeConfigure root)`; реализация слота передаёт её вторым
+аргументом `implementation<API, Compose>(name, configure)`. Runtime вызывает её сразу после `compose` и затем лениво в
 `maintain`, если:
 
 * в поддереве ветки создан узел (или построен его объект) либо узел ушёл в retire /
@@ -346,7 +390,7 @@ Serialization мог сохранить заданное пользовател�
 auto viewport = root.branch("viewport");
 auto camera = viewport.emplace<Camera>("camera");
 viewport.construct<TestViewport, Viewport>(camera);
-viewport.addSlot<Controller>("controller").choice("FreeCamera", composeFreeCamera);
+viewport.addSlot<Controller>("controller");         // единственная реализация — FreeCamera
 ```
 
 Вложенная композиция находит объект, которому принадлежит, запросом

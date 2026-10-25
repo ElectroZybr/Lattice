@@ -221,10 +221,9 @@ TEST(Composition_SharedAmbiguityAndCollectionRollback, RuntimeFixture) {
     REQUIRE(&consumer->number == one.get());
     REQUIRE(nodes.dependencies.retained(consumer.id(), one.id()));
     auto two = root.emplaceShared<Number>("two", 2);
+    // The only candidate was pinned by its first use: a second one does not make it ambiguous.
+    REQUIRE(consumerBranch.mount<Number>().ref().get() == one.get());
     bool rejected = false;
-    try { consumerBranch.mount<Number>(); }
-    catch (const std::exception&) { rejected = true; }
-    REQUIRE(rejected);
 
     auto snapshot = Selection<Number>{std::vector<Ref<Number>>{two, one}};
     nodes.ops.destroyBranch(one.id());
@@ -568,7 +567,7 @@ TEST(Composition_BranchBecomesObjectNodeAfterChildren, RuntimeFixture,
         camera->id = id;
         auto view = branch.construct<View, ViewAPI>(camera);
         auto controller = branch.addSlot<ViewController>("controls");
-        controller.choice("Test::Controller", composeController);
+        choose<composeController>(controller, "Test::Controller");
         REQUIRE(&controller->view == static_cast<ViewAPI*>(view.get()));
         return view.id();
     };

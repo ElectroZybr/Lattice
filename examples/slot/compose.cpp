@@ -12,10 +12,17 @@ auto composeHardware(NodeBuild& run) {
 }
 }
 
+// What a package lists in `lattice_package.implementations`; main registers it by hand.
+constinit const Lattice::Implementation implementations[] = {
+    Lattice::implementation<Renderer, composeSoftware>("Software"),
+    Lattice::implementation<Renderer, composeHardware>("Hardware"),
+};
+std::span<const Lattice::Implementation> slotImplementations() { return implementations; }
+
 extern "C" void compose(NodeBuild root) {
     root.emplace<Palette>("palette");
     auto renderer = root.addSlot<Renderer>("renderer");
-    renderer.choice("SlotExample::Software", composeSoftware);
+    renderer.select("Software");          // two implementations: the slot waits for a choice
     root.emplace<Viewport>("viewport", renderer.ref());
 }
 
@@ -23,7 +30,7 @@ extern "C" void compose(NodeBuild root) {
 // No builder or automatic rebuild job is stored in a component.
 bool useHardware(NodeBuild& root) {
     auto renderer = root.addSlot<Renderer>("renderer");
-    if (!renderer.choice("SlotExample::Hardware", composeHardware))
+    if (!renderer.select("Hardware"))
         return false;
     root.emplace<Viewport>("viewport", renderer.ref());
     return true;

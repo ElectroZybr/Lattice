@@ -290,7 +290,7 @@ struct TypedParam final : ParamState {
     ParamResult outOfRange(const T& value) const {
         if constexpr (Ordered)
             return reject(ParamError::Range,
-                std::format("{} is outside [{}, {}]", value, bounds->first, bounds->second));
+                std::format("{} is outside [{}..{}]", value, bounds->first, bounds->second));
         else
             return {};
     }
@@ -385,6 +385,33 @@ struct TypedParam final : ParamState {
         ParamResult result;
         executor->call([&] { result = apply(candidate); });
         return result;
+    }
+};
+
+/// A param without a field: read, write and the choices are functions of its source.
+template<typename T>
+struct AccessorParam final : ParamState {
+    std::function<T()> read;
+    std::function<ParamResult(const T&)> write;
+    std::function<std::vector<T>()> options;
+
+    ParamRules rules() const override {
+        ParamRules result;
+        if (options)
+            for (const auto& option : options()) result.choices.push_back(ParamAdapter<T>::get(option));
+        result.setter = true;
+        return result;
+    }
+
+    static Value get(const void* object) {
+        return ParamAdapter<T>::get(static_cast<const AccessorParam*>(object)->read());
+    }
+
+    static ParamResult set(void* object, const Value& value) {
+        auto& self = *static_cast<AccessorParam*>(object);
+        T candidate{};
+        if (auto converted = detail::convert(candidate, value); !converted) return converted;
+        return self.write(candidate);
     }
 };
 
@@ -585,6 +612,27 @@ public:
         return id;
     }
 
+    /// A param over functions of its source; it ignores executeOn: the source decides.
+    template<typename T>
+    ExportId accessor(
+        NodeId owner,
+        std::string_view name,
+        std::function<T()> read,
+        std::function<ParamResult(const T&)> write,
+        std::function<std::vector<T>()> options = {}
+    ) {
+        claim(owner, name);
+        auto state = std::make_unique<AccessorParam<T>>();
+        state->read = std::move(read);
+        state->write = std::move(write);
+        state->options = std::move(options);
+        const size_t slot = params_.size();
+        params_.push_back({state.get(), &AccessorParam<T>::get, &AccessorParam<T>::set});
+        const ExportId id = record(owner, name, ExportKind::Param, slot);
+        states_.emplace(id, std::move(state));
+        return id;
+    }
+
     /// The typed state of a param, made on first use: for its rules and setter (composition).
     template<typename T>
     TypedParam<T>& typedParam(ExportId id) {
@@ -746,6 +794,22 @@ public:
             .argumentTypes = action.argumentTypes,
             .requiredArguments = action.requiredArguments
         };
+    }
+
+    /// Remove one export (a param the kernel made and no longer needs).
+    void drop(ExportId id) {
+        if (id >= exports_.size() || exports_[id].owner == InvalidNodeId) return;
+        for (auto& entry : index_)
+            if (entry == id) {
+                entry = RemovedSlot;
+                --indexLive_;
+            }
+        const bool parameter = exports_[id].kind == ExportKind::Param;
+        exports_[id].owner = InvalidNodeId;
+        if (parameter) params_[exports_[id].slot] = {};
+        else actions_[exports_[id].slot] = {};
+        states_.erase(id);
+        if (parameter) notify(id, ParamChange::Remove);
     }
 
     void remove(NodeId owner) {

@@ -34,6 +34,8 @@ public:
     /// branches that looked it up) to be reconfigured.
     void invalidate(NodeId changed);
     /// Composition of `id` is running: its configure waits until compose finishes.
+    /// A composition is running (this one would be nested).
+    bool composing() const noexcept { return !composing_.empty(); }
     void beginCompose(NodeId id);
     /// Compose of `id` finished: run its configure now (if any).
     void endCompose(NodeId id);

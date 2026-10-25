@@ -8,6 +8,7 @@
 #include <Lattice/kernel/NodeContext.hpp>
 #include <Lattice/kernel/NodeOps.hpp>
 #include <Lattice/kernel/Exports.hpp>
+#include <Lattice/kernel/Choices.hpp>
 #include <Lattice/kernel/Visibility.hpp>
 
 namespace Lattice {
@@ -21,6 +22,7 @@ public:
     NodeContext context;
     NodeQuery query;
     Exports exports;
+    Choices choices;
     NodeOps ops;
     Builder builder;
 
@@ -29,6 +31,7 @@ public:
         , factory(*this)
         , context(registry)
         , query(registry, blueprints, context)
+        , choices(*this)
         , ops(*this)
         , builder(*this) {}
 };

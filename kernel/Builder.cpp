@@ -47,8 +47,10 @@ void Builder::Batch::commit() {
     if (!builder_ || finished_)
         throw Exception<Builder>("Cannot commit a finished batch");
 
-    // Branches are complete once composed; commit only keeps them.
+    // Branches are complete once composed; commit only keeps them. A slot with one
+    // implementation is filled now: the system is built, that is its first need.
     finished_ = true;
+    builder_->nodeSystem_.choices.fill();
 }
 
 void Builder::Batch::rollback() noexcept {

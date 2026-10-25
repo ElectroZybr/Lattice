@@ -44,6 +44,10 @@ struct ContextResolution {
     ContextResolutionState state = ContextResolutionState::Missing;
     NodeId target = InvalidNodeId;
     std::span<const NodeId> candidates;
+    /// The scope whose candidates were seen.
+    ContextScopeId source = InvalidContextScopeId;
+    /// Resolved as the only candidate, with no target selected anywhere on the way.
+    bool implicit = false;
 
     explicit operator bool() const noexcept {
         return state == ContextResolutionState::Resolved;
@@ -98,6 +102,10 @@ public:
 
     NodeId resolve(ContextScopeId scope, RoleId role) const;
     NodeId resolve(RoleId role) const;
+
+    /// Resolve for use: the only candidate becomes the target of its scope, so a later
+    /// candidate does not make the role ambiguous; the target's departure frees it again.
+    ContextResolution use(ContextScopeId scope, RoleId role);
 
     // changes
     /// Call `callback` lazily (in maintain) after any change of `role`, while `owner`

@@ -6,11 +6,14 @@
 
 extern "C" void compose(NodeBuild);
 bool useHardware(NodeBuild&);
+std::span<const Lattice::Implementation> slotImplementations();
 
 int main() {
     Lattice::Context runtime;
     auto& nodes = runtime.nodes;
     const auto type = runtime.blueprints.addComposition("SlotExample", compose);
+    for (const auto& implementation : slotImplementations())
+        runtime.blueprints.addImplementation(implementation, "SlotExample");
     const auto branch = nodes.builder.add(Lattice::InvalidNodeId, type, "demo");
     try {
         auto root = NodeBuild{branch, nodes};

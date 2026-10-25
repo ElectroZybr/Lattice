@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <Lattice/kernel/Consts.hpp>
+#include <Lattice/kernel/Package.hpp>
 #include <Lattice/kernel/Visibility.hpp>
 #include <Lattice/tools/TypeName.hpp>
 #include <Lattice/tools/ObjectRegistry.hpp>
@@ -47,6 +48,13 @@ class LATTICE_API Blueprints : public ObjectRegistry<Blueprint, BlueprintId, std
 public:
     BlueprintId addComposition(std::string_view name, void (*compose)(::NodeBuild),
         void (*configure)(::NodeConfigure) = nullptr);
+
+    /// A slot implementation, named `<package>::<name>` (just `<name>` without a package).
+    /// The same name again is the same implementation; another function under it is an error.
+    BlueprintId addImplementation(const Implementation& implementation, std::string_view package = {});
+
+    /// Slot implementations of `api`, in registration order.
+    std::vector<BlueprintId> implementations(BlueprintId api) const;
 
     BlueprintId add(
         std::string_view name,

@@ -146,6 +146,11 @@ public:
         return nodeSystem_->exports.set(target.id, value);
     }
 
+    /// Choices that pending branches wait for: write `param` to make one.
+    std::vector<Lattice::PendingChoice> pending() const {
+        return nodeSystem_->choices.pending();
+    }
+
     /// Rules of a param (range, choices, length, own setter); empty when it has none.
     Lattice::ParamRules rules(Lattice::ExportId id) const {
         return nodeSystem_->exports.rules(id);
@@ -426,7 +431,16 @@ public:
     template<class T>
     Ref<T> require(std::string_view instance = Lattice::DefaultInstanceName) const {
         check();
-        const auto node = nodeSystem_.query.require(id_, nodeSystem_.blueprints.id<T>(), instance);
+        const auto api = nodeSystem_.blueprints.id<T>();
+        // A required slot is needed now: one implementation fills it.
+        if (const auto found = nodeSystem_.query.find(id_, api, instance); found != Lattice::InvalidNodeId) {
+            nodeSystem_.choices.fill(found);
+            const auto& node = nodeSystem_.registry.require(found);
+            if (node.kind == Lattice::NodeKind::Slot && node.choice == Lattice::InvalidBlueprintId &&
+                !node.object.building && node.state == Lattice::NodeState::Active)
+                nodeSystem_.choices.requireSlot(found);
+        }
+        const auto node = nodeSystem_.query.require(id_, api, instance);
         return Lattice::detail::reference<T>(nodeSystem_, node);
     }
 
@@ -514,7 +528,9 @@ public:
     Focus<T> focus(std::string_view role = Lattice::typeKey<T>()) {
         check();
         const auto scope = nodeSystem_.context.createScope(id_);
-        return Focus<T>{nodeSystem_, scope, nodeSystem_.context.role(role)};
+        const auto roleId = nodeSystem_.context.role(role);
+        nodeSystem_.choices.declare(scope, roleId);
+        return Focus<T>{nodeSystem_, scope, roleId};
     }
 
     /// Focus this branch on a live, compatible Context candidate. No ownership change.
@@ -526,14 +542,21 @@ public:
         if (type == Lattice::InvalidBlueprintId || !nodeSystem_.query.resolve(target.id(), type))
             throw Lattice::Exception<NodeBuild>("Selected node does not provide '{}'", Lattice::typeKey<T>());
         const auto scope = nodeSystem_.context.createScope(id_);
-        nodeSystem_.context.set(scope, nodeSystem_.context.role(Lattice::typeKey<T>()), target.id());
+        const auto role = nodeSystem_.context.role(Lattice::typeKey<T>());
+        nodeSystem_.context.set(scope, role, target.id());
+        nodeSystem_.choices.declare(scope, role);
     }
 
     template<class T>
     MountBuild<T> mount() {
         check();
         const auto api = nodeSystem_.blueprints.id<T>();
+        if (const auto role = nodeSystem_.context.findRole(Lattice::typeKey<T>()); role != Lattice::InvalidRoleId)
+            if (const auto resolution = nodeSystem_.context.use(nodeSystem_.context.nearestScope(id_), role);
+                resolution.state == Lattice::ContextResolutionState::Ambiguous)
+                nodeSystem_.choices.requireFocus(resolution.source, role);
         const auto target = nodeSystem_.query.shared(id_, api);
+        nodeSystem_.choices.fill(target);
         nodeSystem_.dependencies.retain(id_, target);
         return MountBuild<T>{nodeSystem_, id_, target};
     }
@@ -699,7 +722,7 @@ public:
     T* focus(std::string_view role = Lattice::typeKey<T>()) const {
         const auto roleId = nodeSystem_->context.role(role);
         nodeSystem_->ops.observeRole(observer_, roleId);
-        const auto resolution = nodeSystem_->context.resolveInfo(nodeSystem_->context.nearestScope(id_), roleId);
+        const auto resolution = nodeSystem_->context.use(nodeSystem_->context.nearestScope(id_), roleId);
         if (resolution.state == Lattice::ContextResolutionState::Ambiguous)
             throw Lattice::Exception<NodeConfigure>("Context role '{}' is ambiguous ({} candidates)",
                 role, resolution.candidates.size());
@@ -713,7 +736,7 @@ public:
     Lattice::NodeId focusId(std::string_view role = Lattice::typeKey<T>()) const {
         const auto roleId = nodeSystem_->context.role(role);
         nodeSystem_->ops.observeRole(observer_, roleId);
-        const auto resolution = nodeSystem_->context.resolveInfo(nodeSystem_->context.nearestScope(id_), roleId);
+        const auto resolution = nodeSystem_->context.use(nodeSystem_->context.nearestScope(id_), roleId);
         if (resolution.state == Lattice::ContextResolutionState::Ambiguous)
             throw Lattice::Exception<NodeConfigure>("Context role '{}' is ambiguous ({} candidates)",
                 role, resolution.candidates.size());
@@ -796,55 +819,37 @@ T* Slot<T>::get() const {
 
 template<class T>
 Ref<T> Slot<T>::ref() const {
+    if (valid() && !get()) runtime_->choices.fill(id_);
+    if (valid() && !get() && !runtime_->registry.require(id_).object.building &&
+        runtime_->registry.require(id_).choice == InvalidBlueprintId)
+        runtime_->choices.requireSlot(id_);
     if (!valid() || !get())
-        throw Exception<Slot>("Slot is empty, retiring, or expired");
+        throw Exception<Slot>("Slot '{}' is empty, retiring, or expired",
+            runtime_ && runtime_->registry.get(id_) ? runtime_->registry.require(id_).name : std::string{});
     return detail::reference<T>(*runtime_, id_);
 }
 
 template<class T>
-bool Slot<T>::choice(BlueprintId implementation) {
+bool Slot<T>::select(std::string_view name) {
     if (!valid())
         throw Exception<Slot>("Slot has expired or is retiring");
-    return runtime_->factory.choice(id_, implementation);
+    return runtime_->choices.select(id_, name);
 }
 
 template<class T>
-template<class Result>
-bool Slot<T>::choice(std::string_view name, Result (*compose)(::NodeBuild&), void (*configure)(::NodeConfigure)) {
-    if (!valid() || !compose)
-        throw Exception<Slot>("Slot requires a live scope and composition function");
-    struct Adapter {
-        Result (*function)(::NodeBuild&);
-        NodeId operator()(::NodeBuild& branch) const {
-            auto result = function(branch);
-            if (result.runtime() != &branch.nodeSystem_)
-                throw Exception<Slot>("Composition must return an object from this runtime");
-            using Object = std::remove_pointer_t<decltype(result.get())>;
-            if constexpr (!std::is_same_v<Object, T>)
-                detail::ensureObject<Object, T>(branch.nodeSystem_.blueprints);
-            if constexpr (requires { result.ref(); })
-                detail::resolveHandle(result.ref(), *result.runtime());
-            else
-                detail::resolveHandle(result, *result.runtime());
-            return result.id();
-        }
-    };
-    auto& blueprints = runtime_->blueprints;
-    const auto api = blueprints.id<T>();
-    auto implementation = blueprints.find(name);
-    if (implementation == InvalidBlueprintId) {
-        Blueprint blueprint{.name = std::string(name), .bases = {api}};
-        blueprint.meta.composeSlot = Adapter{compose};
-        blueprint.meta.configure = configure;
-        implementation = blueprints.create(std::move(blueprint), std::string(name));
-    } else {
-        const auto& blueprint = blueprints.require(implementation);
-        const auto* adapter = blueprint.meta.composeSlot.template target<Adapter>();
-        if (!adapter || adapter->function != compose || blueprint.meta.configure != configure ||
-            !blueprints.isA(implementation, api))
-            throw Exception<Slot>("Composition name '{}' is already registered differently", name);
-    }
-    return choice(implementation);
+template<auto Compose>
+uint32_t Slot<T>::compose(::NodeBuild& branch) {
+    auto result = Compose(branch);
+    if (result.runtime() != &branch.nodeSystem_)
+        throw Exception<Slot>("Composition must return an object from this runtime");
+    using Object = std::remove_pointer_t<decltype(result.get())>;
+    if constexpr (!std::is_same_v<Object, T>)
+        detail::ensureObject<Object, T>(branch.nodeSystem_.blueprints);
+    if constexpr (requires { result.ref(); })
+        detail::resolveHandle(result.ref(), *result.runtime());
+    else
+        detail::resolveHandle(result, *result.runtime());
+    return result.id();
 }
 
 template<class T>
@@ -869,7 +874,9 @@ bool Focus<T>::valid() const noexcept {
 
 template<class T>
 NodeId Focus<T>::id() const {
-    return valid() ? runtime_->context.resolve(scope_, role_) : InvalidNodeId;
+    if (!valid()) return InvalidNodeId;
+    const auto resolution = runtime_->context.use(scope_, role_);
+    return resolution ? resolution.target : InvalidNodeId;
 }
 
 template<class T>
@@ -884,9 +891,10 @@ template<class T>
 Ref<T> Focus<T>::ref() const {
     if (!valid())
         throw Exception<Focus>("Focus scope has expired or is retiring");
-    const auto resolution = runtime_->context.resolveInfo(scope_, role_);
+    const auto resolution = runtime_->context.use(scope_, role_);
     if (resolution.state == ContextResolutionState::Ambiguous)
-        throw Exception<Focus>("Context role '{}' is ambiguous", runtime_->context.roleName(role_));
+        runtime_->choices.requireFocus(resolution.source, role_);
+    if (resolution) runtime_->choices.fill(resolution.target);
     if (resolution.state == ContextResolutionState::Missing)
         throw Exception<Focus>("Context role '{}' is missing", runtime_->context.roleName(role_));
     auto* object = get();

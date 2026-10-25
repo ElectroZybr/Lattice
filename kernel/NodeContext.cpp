@@ -213,6 +213,7 @@ ContextResolution NodeContext::resolveInfo(ContextScopeId scopeId, RoleId roleId
 
     NodeId target = InvalidNodeId;
     std::span<const NodeId> candidates;
+    ContextScopeId source = InvalidContextScopeId;
 
     for (ContextScopeId scope = scopeId;
          scope != InvalidContextScopeId;
@@ -228,8 +229,10 @@ ContextResolution NodeContext::resolveInfo(ContextScopeId scopeId, RoleId roleId
             target = entry->target;
 
         // Ближайший scope с candidates определяет доступный набор.
-        if (candidates.empty() && !entry->candidates.empty())
+        if (candidates.empty() && !entry->candidates.empty()) {
             candidates = entry->candidates;
+            source = scope;
+        }
 
         if (target != InvalidNodeId && !candidates.empty())
             break;
@@ -239,7 +242,8 @@ ContextResolution NodeContext::resolveInfo(ContextScopeId scopeId, RoleId roleId
         return {
             .state = ContextResolutionState::Resolved,
             .target = target,
-            .candidates = candidates
+            .candidates = candidates,
+            .source = source
         };
 
     if (candidates.empty())
@@ -249,14 +253,27 @@ ContextResolution NodeContext::resolveInfo(ContextScopeId scopeId, RoleId roleId
         return {
             .state = ContextResolutionState::Resolved,
             .target = candidates.front(),
-            .candidates = candidates
+            .candidates = candidates,
+            .source = source,
+            .implicit = true
         };
 
     return {
         .state = ContextResolutionState::Ambiguous,
         .target = InvalidNodeId,
-        .candidates = candidates
+        .candidates = candidates,
+        .source = source
     };
+}
+
+ContextResolution NodeContext::use(ContextScopeId scopeId, RoleId roleId) {
+    ContextResolution result = resolveInfo(scopeId, roleId);
+    if (result.implicit) {
+        // The entry exists (it holds the candidates): no reallocation under the span.
+        requireEntry(result.source, roleId).target = result.target;
+        result.implicit = false;
+    }
+    return result;
 }
 
 ContextResolution NodeContext::resolveInfo(RoleId roleId) const {

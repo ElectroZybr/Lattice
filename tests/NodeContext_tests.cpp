@@ -68,7 +68,7 @@ TEST(NodeContext_SetUpdatesEntry, RuntimeFixture,
     fixture.run_ctx.nodes.context.set(scope, role, b);
 
     REQUIRE(fixture.run_ctx.nodes.context.resolveInfo(scope, role).target == b);
-    REQUIRE(fixture.run_ctx.nodes.context.scope(scope)->roles.size() == 1);
+    REQUIRE(std::ranges::count(fixture.run_ctx.nodes.context.scope(scope)->roles, role, &ContextEntry::role) == 1);
 }
 
 TEST(NodeContext_ResolveLocal, RuntimeFixture,
