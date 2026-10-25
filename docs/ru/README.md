@@ -47,8 +47,8 @@ README библиотек и примеров лежат рядом с кодо�
 
 ```text
 kernel/            дерево, Blueprints, Context, создание и retire, экспорты, пакеты, конвейеры
-tools/             тестовая инфраструктура и форматирование ядра
-libs/              библиотеки без runtime: lattice-tools, lattice-logger, lattice-sysinfo, lbm-runner, lbm-history, lbm
+tools/             форматирование ядра
+libs/              библиотеки без runtime: lattice-tools, lattice-test, lattice-logger, lattice-sysinfo, lbm-runner, lbm-history, lbm
 examples/          исполняемые примеры композиции и слотов
 tests/             проверки инвариантов ядра и тестовые пакеты (тесты библиотек — в их папках)
 packages/l/        рецепты xmake-пакетов (lattice, lattice-tools, lattice-logger, …)

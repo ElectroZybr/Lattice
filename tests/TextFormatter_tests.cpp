@@ -1,5 +1,5 @@
 #include <Lattice/tests/RuntimeFixture.hpp>
-#include <Lattice/tools/Tests.hpp>
+#include <lattice-test/Tests.hpp>
 #include <Lattice/tools/TextFormatter.hpp>
 #include <Lattice/tools/TextPattern.hpp>
 #include <lattice-logger/Logger.hpp>

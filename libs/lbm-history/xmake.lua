@@ -14,8 +14,6 @@ target("lbm-history")
 if has_config("lattice_build_extras") then
     target("lbm-history.tests")
         set_kind("binary")
-        add_files("tests/*_tests.cpp", "../tests/main.cpp", "../../tools/Tests.cpp")
-        add_defines("LATTICE_BUILDING_LIBRARY")
-        add_includedirs("../../..")
-        add_deps("lbm-history")
+        add_files("tests/*_tests.cpp", "../tests/main.cpp")
+        add_deps("lbm-history", "lattice-test")
 end

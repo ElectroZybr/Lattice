@@ -8,7 +8,7 @@
 
 #include <lbm-runner/Benchmarks.hpp>
 #include "Work_tests.hpp"
-#include <Lattice/tools/Tests.hpp>
+#include <lattice-test/Tests.hpp>
 
 namespace Lattice {
 

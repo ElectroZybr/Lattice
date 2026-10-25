@@ -1,4 +1,4 @@
-#include <Lattice/tools/Tests.hpp>
+#include <lattice-test/Tests.hpp>
 #include <lattice-logger/LogMode.hpp>
 
 

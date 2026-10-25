@@ -4,7 +4,7 @@
 #include <lbm-runner/Analysis.hpp>
 #include <lbm-runner/Metrics/Perf.hpp>
 #include <lbm-runner/Metrics/Time.hpp>
-#include <Lattice/tools/Tests.hpp>
+#include <lattice-test/Tests.hpp>
 
 namespace Lattice {
 

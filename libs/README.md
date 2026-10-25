@@ -8,13 +8,14 @@
 | Библиотека | Цель | Пакет xmake | Заголовки |
 | --- | --- | --- | --- |
 | `lattice-tools/` | header-only | `lattice-tools` | `Lattice/tools/*.hpp`, `Lattice/kernel/Value.hpp` |
+| `lattice-test/` | shared | `lattice-test` | `lattice-test/Tests.hpp` |
 | `lattice-logger/` | shared | `lattice-logger` | `lattice-logger/Logger.hpp`, `lattice-logger/LogScope.hpp` |
 | `lattice-sysinfo/` | shared | `lattice-sysinfo` | `lattice-sysinfo/SystemInfo.hpp`, `lattice-sysinfo/Output.hpp` |
 | `lbm-runner/` | shared | `lbm-runner` | `lbm-runner/Benchmarks.hpp`, `lbm-runner/Metrics.hpp` |
 | `lbm-history/` | static | — | `lbm-history/Repository.hpp`, `lbm-history/Statistics.hpp` |
 | `lbm/` | binary `lbm` | — (`xmake install-lbm`) | — |
 
-Зависимости: lattice-logger → lattice-tools; lattice-sysinfo → lattice-logger; lbm-runner →
+Зависимости: lattice-test → lattice-logger; lattice-logger → lattice-tools; lattice-sysinfo → lattice-logger; lbm-runner →
 lattice-sysinfo и lattice-logger; lbm-history → lbm-runner; `lbm` (запуск наборов, история в
 git, сравнение, [проект](../docs/ru/articles/BmHistory.md)) → lbm-history. lattice-tools —
 header-only утилиты и тип данных `Value` (зависит от GLM). lattice-logger хранит sinks,
@@ -50,13 +51,16 @@ Namespace существующих API (`Lattice::SystemInfo`, `Lattice::Benchma
 Проверка из корня репозитория:
 
 ```sh
-xmake build Logger.tests SysInfo.tests BmRunner.tests
-xmake run Logger.tests
-xmake run SysInfo.tests
-xmake run BmRunner.tests
+xmake build -y lattice-test.tests lattice-logger.tests lattice-sysinfo.tests lbm-runner.tests
+xmake run lattice-test.tests
+xmake run lattice-logger.tests
+xmake run lattice-sysinfo.tests
+xmake run lbm-runner.tests
 ```
 
 Эти цели используют существующие тесты утилит и тестовый runner, не линкуют runtime.
 Тесты TextFormatter с runtime-параметрами остаются в `Lattice.tests`.
 Пакет `lattice` использует отдельные установленные `lattice-logger` и
 `lattice-sysinfo`; BmRunner подключают потребители бенчмарков явно.
+
+Тестовая инфраструктура — [lattice-test](lattice-test/README.md); её исходники не входят в runtime.

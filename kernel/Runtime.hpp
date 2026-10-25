@@ -22,7 +22,6 @@
 #include "lattice-logger/LogScope.hpp"
 #include "lattice-logger/LogMode.hpp"
 #include "lattice-logger/Logger.hpp"
-#include "Lattice/tools/Tests.hpp"
 
 
 namespace Lattice {
@@ -79,7 +78,7 @@ public:
             Logger::setDefaultMode(LogMode::Clean | LogMode::OnlyWarn);
             SystemInfo::Output::print();
             std::filesystem::path configPath = "lattice.toml";
-            bool testMode = false, benchMode = false;
+            bool benchMode = false;
 
             for (int i = 1; i < argc; ++i) {
                 const std::string_view arg = argv[i];
@@ -89,8 +88,6 @@ public:
                     if (++i >= argc)
                         throw Exception<Runtime>("missing path for {}", arg);
                     configPath = argv[i];
-                } else if (arg == "--tests" || arg == "-t") {
-                    testMode = true;
                 }
             }
 
@@ -103,12 +100,6 @@ public:
                 scope.finish("<ok>Loaded</>");
             }
             
-            if (testMode) { // режим прогона тестов
-                dlLoader.load("Lattice", ".tests");
-                dlLoader.load("packages", ".tests");
-                return Test::instance().runAll() == 0 ? 0 : 1;
-            }
-
             if (benchMode) {}
             dlLoader.load("Lattice", ".bench");
             

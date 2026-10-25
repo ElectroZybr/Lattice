@@ -1,7 +1,7 @@
 #include <cmath>
 
 #include <lbm-runner/Metrics/Cache.hpp>
-#include <Lattice/tools/Tests.hpp>
+#include <lattice-test/Tests.hpp>
 
 namespace Lattice {
 

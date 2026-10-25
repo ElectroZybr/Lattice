@@ -7,7 +7,7 @@
 #include <utility>
 
 #include <lattice-logger/LogMode.hpp>
-#include <Lattice/kernel/Visibility.hpp>
+#include "Visibility.hpp"
 #include "Lattice/tools/Fixture.hpp"
 
 
@@ -28,11 +28,11 @@
 #define TEST_SELECT(_1, _2, _3, NAME, ...) NAME
 #define TEST(...) TEST_SELECT(__VA_ARGS__, TEST3, TEST2)(__VA_ARGS__)
 
-#define REQUIRE(condition) \
-    ::Lattice::testRequire(static_cast<bool>(condition), #condition, __FILE__, __LINE__)
+#define REQUIRE(condition, ...) \
+    ::Lattice::testRequire(static_cast<bool>(condition), #condition, __FILE__, __LINE__ __VA_OPT__(, __VA_ARGS__))
 
-#define CHECK(condition) \
-    ::Lattice::testCheck(static_cast<bool>(condition), #condition, __FILE__, __LINE__)
+#define CHECK(condition, ...) \
+    ::Lattice::testCheck(static_cast<bool>(condition), #condition, __FILE__, __LINE__ __VA_OPT__(, __VA_ARGS__))
 
 
 namespace Lattice {
@@ -44,7 +44,7 @@ struct TestCase {
     std::unique_ptr<Fixture> (*createFixture)();
 };
 
-class LATTICE_API Test {
+class LATTICE_TEST_API Test {
 public:
     static Test& instance();
 
@@ -79,7 +79,7 @@ public:
     }
 };
 
-LATTICE_API void testRequire(bool condition, const char* expression, const char* file, int line);
-LATTICE_API void testCheck(bool condition, const char* expression, const char* file, int line);
+LATTICE_TEST_API void testRequire(bool condition, const char* expression, const char* file, int line, std::string_view message = {});
+LATTICE_TEST_API void testCheck(bool condition, const char* expression, const char* file, int line, std::string_view message = {});
 
 } // namespace Lattice

@@ -1,6 +1,6 @@
 #include <lbm-runner/Output.hpp>
 #include <lbm-runner/Metrics/Time.hpp>
-#include <Lattice/tools/Tests.hpp>
+#include <lattice-test/Tests.hpp>
 
 namespace Lattice {
 

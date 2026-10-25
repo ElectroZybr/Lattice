@@ -15,8 +15,6 @@ target("lattice-logger")
 if has_config("lattice_build_extras") then
     target("lattice-logger.tests")
         set_kind("binary")
-        add_files("tests/*_tests.cpp", "../tests/main.cpp", "../../tools/Tests.cpp")
-        add_defines("LATTICE_BUILDING_LIBRARY")
-        add_includedirs("../../..")
-        add_deps("lattice-logger")
+        add_files("tests/*_tests.cpp", "../tests/main.cpp")
+        add_deps("lattice-logger", "lattice-test")
 end

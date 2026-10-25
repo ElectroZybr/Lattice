@@ -6,7 +6,7 @@
 #include <vector>
 
 #include <Lattice/tests/RuntimeFixture.hpp>
-#include <Lattice/tools/Tests.hpp>
+#include <lattice-test/Tests.hpp>
 
 #include <Lattice/Lattice.hpp>
 

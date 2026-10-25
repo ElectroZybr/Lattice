@@ -21,10 +21,10 @@ option_end()
 if has_config("lattice_external_tools") then
     add_requires("lattice-logger", "lattice-sysinfo")
     if has_config("lattice_build_extras") then
-        add_requires("lbm-runner")
+        add_requires("lbm-runner", "lattice-test")
     end
 else
-    includes("libs/lattice-tools", "libs/lattice-logger", "libs/lattice-sysinfo", "libs/lbm-runner", "libs/lbm-history", "libs/lbm")
+    includes("libs/lattice-test", "libs/lattice-tools", "libs/lattice-logger", "libs/lattice-sysinfo", "libs/lbm-runner", "libs/lbm-history", "libs/lbm")
 end
 
 target("Lattice")
@@ -67,6 +67,11 @@ if has_config("lattice_build_extras") then
         end
 
         add_deps("Lattice")
+        if has_config("lattice_external_tools") then
+            add_packages("lattice-test")
+        else
+            add_deps("lattice-test")
+        end
         if has_config("lattice_external_tools") then
             add_packages("lbm-runner")
         else

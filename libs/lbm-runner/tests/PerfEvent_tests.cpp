@@ -1,5 +1,5 @@
 #include <lbm-runner/Metrics/PerfEvent.hpp>
-#include <Lattice/tools/Tests.hpp>
+#include <lattice-test/Tests.hpp>
 
 namespace Lattice {
 

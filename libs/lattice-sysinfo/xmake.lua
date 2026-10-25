@@ -10,13 +10,3 @@ target("lattice-sysinfo")
     if is_plat("linux") then
         add_syslinks("pthread", {public = true})
     end
-
--- Tests of the library without the runtime: xmake run lattice-sysinfo.tests
-if has_config("lattice_build_extras") then
-    target("lattice-sysinfo.tests")
-        set_kind("binary")
-        add_files("tests/*_tests.cpp", "../tests/main.cpp", "../../tools/Tests.cpp")
-        add_defines("LATTICE_BUILDING_LIBRARY")
-        add_includedirs("../../..")
-        add_deps("lattice-sysinfo")
-end

@@ -40,6 +40,9 @@
 
 ## Тесты
 
+- Фреймворк — [lattice-test](../../libs/lattice-test/README.md), заголовок `<lattice-test/Tests.hpp>`.
+  Тестовые цели явно зависят от `lattice-test`; исходники runner не компилируются повторно.
+
 - Тест инварианта ядра — `tests/<Тема>_tests.cpp`: `TEST(Тема_Что, RuntimeFixture, "описание")`
   над `RuntimeFixture`, без загрузки пакетов; динамические тестовые пакеты — `tests/TestPackages/`.
 - Тест библиотеки — в `libs/<имя>/tests/`, цель `<имя>.tests`; корневой `tests/` — только ядро.

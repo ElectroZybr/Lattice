@@ -9,7 +9,7 @@
 #include <lbm-history/Machine.hpp>
 #include <lbm-history/Repository.hpp>
 #include <lbm-history/Statistics.hpp>
-#include <Lattice/tools/Tests.hpp>
+#include <lattice-test/Tests.hpp>
 
 namespace Lattice {
 

@@ -15,8 +15,6 @@ target("lbm-runner")
 if has_config("lattice_build_extras") then
     target("lbm-runner.tests")
         set_kind("binary")
-        add_files("tests/*_tests.cpp", "../tests/main.cpp", "../../tools/Tests.cpp")
-        add_defines("LATTICE_BUILDING_LIBRARY")
-        add_includedirs("../../..")
-        add_deps("lbm-runner")
+        add_files("tests/*_tests.cpp", "../tests/main.cpp")
+        add_deps("lbm-runner", "lattice-test")
 end

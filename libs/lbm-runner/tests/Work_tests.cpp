@@ -4,7 +4,7 @@
 #include <vector>
 
 #include <lbm-runner/Benchmarks.hpp>
-#include <Lattice/tools/Tests.hpp>
+#include <lattice-test/Tests.hpp>
 
 #include "Work_tests.hpp"
 

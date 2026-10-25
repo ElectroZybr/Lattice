@@ -1,6 +1,6 @@
 #include <Lattice/Lattice.hpp>
 #include <Lattice/tests/RuntimeFixture.hpp>
-#include <Lattice/tools/Tests.hpp>
+#include <lattice-test/Tests.hpp>
 
 namespace Lattice {
 namespace {

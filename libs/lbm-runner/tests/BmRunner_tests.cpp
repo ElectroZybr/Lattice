@@ -1,7 +1,7 @@
 #include <chrono>
 
 #include <lbm-runner/Benchmarks.hpp>
-#include <Lattice/tools/Tests.hpp>
+#include <lattice-test/Tests.hpp>
 
 namespace Lattice {
 

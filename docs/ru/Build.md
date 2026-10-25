@@ -12,9 +12,9 @@ xmake build -y
 
 ## Тесты
 
-- Тесты инвариантов ядра — цель `Lattice.tests` (разделяемая библиотека с тестами `TEST`).
-- Тесты библиотек — в `libs/<имя>/tests`, бинарники `lattice-logger.tests`,
-  `lattice-sysinfo.tests`, `lbm-runner.tests`, `lbm-history.tests`:
+- Тесты инвариантов ядра — бинарник `Lattice.tests` (`TEST`, библиотека `lattice-test`).
+- Тесты библиотек — в `libs/<имя>/tests`, бинарники `lattice-test.tests`, `lattice-logger.tests`,
+  `lbm-runner.tests`, `lbm-history.tests`:
 
 ```sh
 xmake build -y lbm-runner.tests && xmake run lbm-runner.tests
@@ -71,3 +71,5 @@ add_requires("lattice-logger", "lbm-runner")
 xmake require -f -y lattice          # или lbm-runner, lattice-logger, …
 xmake build -y -r <цели>
 ```
+
+Тесты запускаются отдельными бинарниками; прежний runtime-режим `--tests` удалён.

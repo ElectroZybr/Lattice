@@ -1,4 +1,4 @@
-#include <Lattice/tools/Tests.hpp>
+#include <lattice-test/Tests.hpp>
 #include <lattice-logger/Logger.hpp>
 #include "lattice-logger/LogMode.hpp"
 #include "lattice-logger/LogScope.hpp"
@@ -16,21 +16,23 @@ struct TestFailure : std::exception {
 thread_local bool currentTestFailed = false;
 }
 
-void testRequire(bool condition, const char* expression, const char* file, int line) {
+void testRequire(bool condition, const char* expression, const char* file, int line, std::string_view message) {
     if (condition)
         return;
 
     currentTestFailed = true;
     Logger::warning("Test", "REQUIRE failed: {} ({}:{})", expression, file, line);
+    if (!message.empty()) Logger::warning("Test", "{}", message);
     throw TestFailure{};
 }
 
-void testCheck(bool condition, const char* expression, const char* file, int line) {
+void testCheck(bool condition, const char* expression, const char* file, int line, std::string_view message) {
     if (condition)
         return;
 
     currentTestFailed = true;
     Logger::warning("Test", "CHECK failed: {} ({}:{})", expression, file, line);
+    if (!message.empty()) Logger::warning("Test", "{}", message);
 }
 
 Test& Test::instance() {

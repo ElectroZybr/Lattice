@@ -3,7 +3,7 @@
 #include <thread>
 
 #include <lbm-runner/Metrics/MemoryTraffic.hpp>
-#include <Lattice/tools/Tests.hpp>
+#include <lattice-test/Tests.hpp>
 
 namespace Lattice {
 namespace {
