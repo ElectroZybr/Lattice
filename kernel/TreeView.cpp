@@ -108,7 +108,7 @@ std::string TreeView::label(NodeId id) const {
     if (node.type() == InvalidBlueprintId)
         return node.name;
 
-    const std::string_view type = nodes_->blueprints.require(node.type()).shortName();
+    const std::string type = nodes_->blueprints.require(node.type()).shortName();
     return node.name.empty() ? std::string(type) : std::format("{}:{}", type, node.name);
 }
 

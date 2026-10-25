@@ -43,7 +43,7 @@ std::string Choices::label(NodeId candidate, std::span<const NodeId> candidates)
     });
     if (!node.name.empty() && sameName == 1) return node.name;
     const auto* type = nodes_.blueprints.get(node.type());
-    return std::format("{}:{}", type ? type->shortName() : std::string_view{"#"}, node.name.empty()
+    return std::format("{}:{}", type ? type->shortName() : std::string("#"), node.name.empty()
         ? std::to_string(candidate) : node.name);
 }
 
@@ -143,7 +143,7 @@ std::string Choices::implementationLabel(BlueprintId implementation, BlueprintId
     const auto same = std::ranges::count_if(all, [&](BlueprintId other) {
         return nodes_.blueprints.require(other).shortName() == shortName;
     });
-    return std::string(same == 1 ? shortName : std::string_view(blueprint.name));
+    return same == 1 ? shortName : blueprint.name;
 }
 
 std::vector<std::string> Choices::implementationLabels(BlueprintId api) const {

@@ -8,13 +8,29 @@
 
 namespace Lattice {
 
-std::string_view Blueprint::shortName() const noexcept {
-    const auto pos = name.rfind("::");
-    return std::string_view(name).substr(pos == std::string::npos ? 0 : pos + 2);
+std::string Blueprint::shortName() const {
+    std::string result;
+    for (size_t i = 0; i < name.size(); ++i) {
+        if (name.compare(i, 2, "::") == 0) {
+            // Drop the qualifier just copied: back to the start of this name.
+            const auto start = result.find_last_of("<, ");
+            result.erase(start == std::string::npos ? 0 : start + 1);
+            ++i;
+            continue;
+        }
+        result += name[i];
+    }
+    return result;
 }
 
 std::string_view Blueprint::namespaceName() const noexcept {
-    const auto pos = name.rfind("::");
+    // The last `::` outside template arguments.
+    size_t depth = 0, pos = std::string::npos;
+    for (size_t i = 0; i + 1 < name.size(); ++i) {
+        if (name[i] == '<') ++depth;
+        else if (name[i] == '>' && depth) --depth;
+        else if (depth == 0 && name[i] == ':' && name[i + 1] == ':') pos = i;
+    }
     return pos == std::string::npos
         ? std::string_view{}
         : std::string_view(name).substr(0, pos);

@@ -13,6 +13,14 @@ bool rejects(F&& operation) {
 }
 }
 
+TEST(Blueprints_TemplateNames, BlueprintsFixture,
+    "Короткое имя шаблона снимает квалификаторы и в аргументах: `CallStage<Walls>`, а не `Walls>`.") {
+    auto& types = fixture.blueprints;
+    const auto stage = types.add("Lattice::CallStage<Physics::Walls,std::vector<Physics::Wall>>");
+    REQUIRE(types.require(stage).shortName() == "CallStage<Walls,vector<Wall>>");
+    REQUIRE(types.require(stage).namespaceName() == "Lattice");
+}
+
 TEST(Blueprints_Namespaces, BlueprintsFixture) {
     auto& types = fixture.blueprints;
     const auto gpu = types.add("GPU::Device");

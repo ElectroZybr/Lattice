@@ -38,7 +38,8 @@ struct LATTICE_API Blueprint {
     BlueprintMeta meta;
     std::vector<void* (*)(void*)> upcasts;
 
-    std::string_view shortName() const noexcept;
+    /// The name without qualifiers, in template arguments too: `CallStage<Verlet>`.
+    std::string shortName() const;
     std::string_view namespaceName() const noexcept;
 };
 
