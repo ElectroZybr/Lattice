@@ -8,7 +8,7 @@
 
 #include <lattice-logger/Logger.hpp>
 #include <lattice-sysinfo/SystemInfo.hpp>
-#include <Lattice/tools/TextFormatter.hpp>
+#include <lattice-tools/TextFormatter.hpp>
 
 namespace Lattice::SystemInfo::Output {
 

@@ -1,28 +1,10 @@
 #include "Cache.hpp"
 
-#include <cstring>
+#include <utility>
 
-#include <linux/perf_event.h>
 
-#if defined(__x86_64__) || defined(__i386__)
-#include <cpuid.h>
-#endif
 
 namespace Lattice::Benchmarks {
-
-namespace {
-
-constexpr uint64_t rawConfig(uint64_t event, uint64_t mask) noexcept {
-    return event | (mask << 8);
-}
-
-// AMD Zen core PMU proxies for per-thread data LLC traffic:
-// - L2 misses caused by L1D misses become L3 accesses;
-// - L1D fills sourced from local/remote memory or IO missed the L3.
-constexpr uint64_t AmdZenLlcReads = rawConfig(0x64, 0x08);
-constexpr uint64_t AmdZenLlcMisses = rawConfig(0x44, 0x48);
-
-}
 
 Cache::Result& Cache::Result::operator+=(const Result& other) noexcept {
     instructions += other.instructions;
@@ -51,53 +33,33 @@ double Cache::Result::mpki(uint64_t misses) const noexcept {
 }
 
 Cache::Cache() {
-    events_[Instructions] = openEvent(
-        PERF_TYPE_HARDWARE,
-        PERF_COUNT_HW_INSTRUCTIONS
-    );
-
-    events_[L1dReads] = openCacheEvent(
-        PERF_COUNT_HW_CACHE_L1D,
-        PERF_COUNT_HW_CACHE_OP_READ,
-        PERF_COUNT_HW_CACHE_RESULT_ACCESS
-    );
-    events_[L1dMisses] = openCacheEvent(
-        PERF_COUNT_HW_CACHE_L1D,
-        PERF_COUNT_HW_CACHE_OP_READ,
-        PERF_COUNT_HW_CACHE_RESULT_MISS
-    );
-    events_[LlcReads] = openCacheEvent(
-        PERF_COUNT_HW_CACHE_LL,
-        PERF_COUNT_HW_CACHE_OP_READ,
-        PERF_COUNT_HW_CACHE_RESULT_ACCESS
-    );
-    events_[LlcMisses] = openCacheEvent(
-        PERF_COUNT_HW_CACHE_LL,
-        PERF_COUNT_HW_CACHE_OP_READ,
-        PERF_COUNT_HW_CACHE_RESULT_MISS
-    );
-    events_[DtlbMisses] = openCacheEvent(
-        PERF_COUNT_HW_CACHE_DTLB,
-        PERF_COUNT_HW_CACHE_OP_READ,
-        PERF_COUNT_HW_CACHE_RESULT_MISS
-    );
+    events_[Instructions] = PerfEvent::hardware(HardwareCounter::Instructions);
+    events_[L1dReads] = PerfEvent::cache(CacheCounter::L1dReads);
+    events_[L1dMisses] = PerfEvent::cache(CacheCounter::L1dMisses);
+    events_[LlcReads] = PerfEvent::cache(CacheCounter::LlcReads);
+    events_[LlcMisses] = PerfEvent::cache(CacheCounter::LlcMisses);
+    events_[DtlbMisses] = PerfEvent::cache(CacheCounter::DtlbMisses);
 
     if (
-        (!events_[LlcReads].available() || !events_[LlcMisses].available()) &&
-        supportsAmdZenRawEvents()
+        !events_[LlcReads].available() ||
+        !events_[LlcMisses].available()
     ) {
-        events_[LlcReads] = openEvent(
-            PERF_TYPE_RAW,
-            AmdZenLlcReads
-        );
-        events_[LlcMisses] = openEvent(
-            PERF_TYPE_RAW,
-            AmdZenLlcMisses
-        );
+        PerfEvent reads = PerfEvent::cache(CacheCounter::LlcReads, true);
+        PerfEvent misses = PerfEvent::cache(CacheCounter::LlcMisses, true);
+
+        if (reads.available() && misses.available()) {
+            events_[LlcReads] = std::move(reads);
+            events_[LlcMisses] = std::move(misses);
+        }
     }
 
-    if (!available())
-        close();
+    for (const PerfEvent& event : events_) {
+        if (!event.available()) {
+            reason_ = event.unavailableReason();
+            close();
+            break;
+        }
+    }
 }
 
 bool Cache::available() const noexcept {
@@ -199,74 +161,6 @@ Metrics Cache::makeMetrics(const Result& result) {
             result.mpki(result.dtlbMisses)
         }
     };
-}
-
-uint64_t Cache::cacheConfig(
-    uint64_t cache,
-    uint64_t operation,
-    uint64_t result
-) noexcept {
-    return cache | (operation << 8) | (result << 16);
-}
-
-PerfEvent Cache::openEvent(uint32_t type, uint64_t config) {
-    perf_event_attr attr{};
-
-    attr.type = type;
-    attr.config = config;
-    attr.disabled = 1;
-    attr.exclude_kernel = 1;
-    attr.exclude_hv = 1;
-    attr.read_format =
-        PERF_FORMAT_TOTAL_TIME_ENABLED |
-        PERF_FORMAT_TOTAL_TIME_RUNNING;
-
-    return PerfEvent(attr, 0, -1);
-}
-
-PerfEvent Cache::openCacheEvent(
-    uint64_t cache,
-    uint64_t operation,
-    uint64_t result
-) {
-    return openEvent(
-        PERF_TYPE_HW_CACHE,
-        cacheConfig(cache, operation, result)
-    );
-}
-
-bool Cache::supportsAmdZenRawEvents() noexcept {
-#if defined(__x86_64__) || defined(__i386__)
-    unsigned int eax = 0;
-    unsigned int ebx = 0;
-    unsigned int ecx = 0;
-    unsigned int edx = 0;
-
-    if (!__get_cpuid(0, &eax, &ebx, &ecx, &edx))
-        return false;
-
-    char vendor[13]{};
-    std::memcpy(vendor, &ebx, sizeof(ebx));
-    std::memcpy(vendor + 4, &edx, sizeof(edx));
-    std::memcpy(vendor + 8, &ecx, sizeof(ecx));
-
-    if (std::string_view(vendor) != "AuthenticAMD")
-        return false;
-
-    if (!__get_cpuid(1, &eax, &ebx, &ecx, &edx))
-        return false;
-
-    const unsigned int baseFamily = (eax >> 8) & 0x0f;
-    const unsigned int extendedFamily = (eax >> 20) & 0xff;
-    const unsigned int family =
-        baseFamily == 0x0f
-            ? baseFamily + extendedFamily
-            : baseFamily;
-
-    return family >= 0x17 && family <= 0x1a;
-#else
-    return false;
-#endif
 }
 
 void Cache::close() {

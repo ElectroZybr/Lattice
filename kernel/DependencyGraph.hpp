@@ -8,7 +8,7 @@
 
 namespace Lattice {
 
-class LATTICE_API DependencyGraph {
+class LT_API DependencyGraph {
 public:
     void add(NodeId dependent, NodeId dependency);
     void retain(NodeId dependent, NodeId dependency);

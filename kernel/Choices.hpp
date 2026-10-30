@@ -7,7 +7,7 @@
 #include <Lattice/kernel/Consts.hpp>
 #include <Lattice/kernel/Exports.hpp>
 #include <Lattice/kernel/Visibility.hpp>
-#include <Lattice/tools/Exception.hpp>
+#include <lattice-tools/Exception.hpp>
 
 namespace Lattice {
 
@@ -18,7 +18,7 @@ class NodeSystem;
  * ambiguous Context role. The outermost composition catches it: the branch waits for
  * the choice (Choices::pending) and is composed again once it is made.
  */
-class LATTICE_API ChoiceRequired : public ExceptionBase {
+class LT_API ChoiceRequired : public ExceptionBase {
 public:
     ChoiceRequired(NodeId owner, std::string name, ExportId param, std::vector<std::string> options);
     ~ChoiceRequired() override;
@@ -49,7 +49,7 @@ struct PendingChoice {
  * A slot with a single implementation fills itself on first need (ref(), the end of a
  * composition, maintain); with several it waits for an explicit choice.
  */
-class LATTICE_API Choices {
+class LT_API Choices {
     struct Point {
         ContextScopeId scope = InvalidContextScopeId;
         RoleId role = InvalidRoleId;
@@ -110,6 +110,8 @@ class LATTICE_API Choices {
 
 public:
     explicit Choices(NodeSystem& nodes) : nodes_(nodes) {}
+    Choices(const Choices&) = delete;
+    Choices& operator=(const Choices&) = delete;
 
     /// A focus point: the scope chooses this role.
     void declare(ContextScopeId scope, RoleId role);

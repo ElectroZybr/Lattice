@@ -10,8 +10,8 @@
 #include <lbm-runner/Output.hpp>
 #include <lbm-runner/Results.hpp>
 #include <lattice-sysinfo/Output.hpp>
-#include <Lattice/tools/ObjectRegistry.hpp>
-#include <Lattice/tools/Exception.hpp>
+#include <lattice-tools/ObjectRegistry.hpp>
+#include <lattice-tools/Exception.hpp>
 
 namespace Lattice::Benchmarks {
 

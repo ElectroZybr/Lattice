@@ -4,8 +4,6 @@
 #include <cstddef>
 #include <cstdint>
 
-#include <linux/perf_event.h>
-
 #include <lbm-runner/Stages.hpp>
 #include <lbm-runner/Metrics/PerfEvent.hpp>
 
@@ -45,8 +43,8 @@ public:
 
     MemoryEvent()
         : events_{
-            openCounter(PERF_COUNT_SW_PAGE_FAULTS_MIN),
-            openCounter(PERF_COUNT_SW_PAGE_FAULTS_MAJ)
+            PerfEvent::software(SoftwareCounter::MinorFaults),
+            PerfEvent::software(SoftwareCounter::MajorFaults)
         } {}
 
     bool available() const noexcept override {
@@ -54,7 +52,9 @@ public:
     }
 
     std::string_view unavailableReason() const noexcept override {
-        return "memory software perf events are unavailable";
+        return events_[0].available()
+            ? events_[1].unavailableReason()
+            : events_[0].unavailableReason();
     }
 
     void begin() override {
@@ -128,22 +128,6 @@ public:
         samples_ = 0;
 
         return metrics;
-    }
-
-private:
-    static PerfEvent openCounter(uint64_t config) {
-        perf_event_attr attr{};
-        attr.type = PERF_TYPE_SOFTWARE;
-        attr.size = sizeof(attr);
-        attr.config = config;
-        attr.disabled = 1;
-        attr.exclude_kernel = 0;
-        attr.exclude_hv = 1;
-        attr.read_format =
-            PERF_FORMAT_TOTAL_TIME_ENABLED |
-            PERF_FORMAT_TOTAL_TIME_RUNNING;
-
-        return PerfEvent(attr, 0, -1);
     }
 };
 

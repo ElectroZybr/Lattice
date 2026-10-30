@@ -12,7 +12,7 @@ namespace Lattice {
 
 struct PackageManifest;
 
-class LATTICE_API PackageManager {
+class LT_API PackageManager {
     static constexpr std::string_view tag = "PackageManager";
 public:
     PackageManager(Blueprints& blueprints, DLLoader& dlLoader)

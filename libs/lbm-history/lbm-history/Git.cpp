@@ -2,7 +2,7 @@
 
 #include "Process.hpp"
 
-#include <Lattice/tools/Exception.hpp>
+#include <lattice-tools/Exception.hpp>
 
 namespace Lattice::BmHistory {
 

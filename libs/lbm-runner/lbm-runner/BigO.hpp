@@ -37,7 +37,7 @@ struct BigOResult {
     double error = 0;
 };
 
-BMRUNNER_API BigOResult analyze(std::span<const ComplexityPoint> points);
-BMRUNNER_API std::string_view complexityName(Complexity complexity) noexcept;
+LBM_API BigOResult analyze(std::span<const ComplexityPoint> points);
+LBM_API std::string_view complexityName(Complexity complexity) noexcept;
 
 }

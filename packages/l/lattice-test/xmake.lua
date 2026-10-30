@@ -12,6 +12,10 @@ package("lattice-test")
         if not package:is_plat("windows", "mingw") then
             package:add("rpathdirs", path.join(package:installdir(), "lib"))
         end
+        -- link.exe infers the subsystem from main in the object files, not in lattice-test-main.
+        if package:is_plat("windows") then
+            package:add("ldflags", "/SUBSYSTEM:CONSOLE")
+        end
     end)
 
     on_install(function (package)
@@ -20,10 +24,9 @@ package("lattice-test")
         os.mkdir(build_root)
         os.cp("*", build_root)
         local script = io.readfile(path.join(build_root, "xmake.lua"))
-        script = script:gsub('add_deps%("lattice%-tools", {public = true}%)', 'add_packages("lattice-tools", {public = true})')
-        script = script:gsub('add_deps%("lattice%-logger", {public = true}%)', 'add_packages("lattice-logger", {public = true})')
+        local stubs = import("stubs", {rootdir = path.join(package:scriptdir(), "../..")})
         io.writefile(path.join(build_root, "xmake.lua"),
-            'set_languages("c++23")\nadd_rules("mode.debug", "mode.release")\nadd_requires("lattice-tools", "lattice-logger")\n' .. script)
+            'set_languages("c++23")\nadd_rules("mode.debug", "mode.release")\n' .. stubs(package, {"lattice-tools", "lattice-logger"}) .. script)
         os.cd(build_root)
         import("package.tools.xmake").install(package)
     end)

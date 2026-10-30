@@ -14,9 +14,10 @@ namespace Lattice {
 class NodeFactory;
 class NodeSystem;
 
-class LATTICE_API Builder {
+class LT_API Builder {
 public:
-    class Batch {
+    // A nested class is exported on its own on Windows.
+    class LT_API Batch {
     public:
         Batch(const Batch&) = delete;
         Batch& operator=(const Batch&) = delete;

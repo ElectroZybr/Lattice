@@ -3,7 +3,7 @@
 #include <string>
 
 #include <Lattice/kernel/Blueprints.hpp>
-#include <Lattice/tools/Exception.hpp>
+#include <lattice-tools/Exception.hpp>
 #include <Lattice/kernel/NodeRegistry.hpp>
 #include <Lattice/kernel/NodeContext.hpp>
 

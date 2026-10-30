@@ -80,12 +80,20 @@ BENCH_WORK(WorkTests, Dense, DenseState) {
     work.input([](size_t n, const Benchmarks::Run& run) { return DenseState{n, run.value<DensityAxis>(), 0}; });
 }
 
+// A microsecond of work: the fit skips zero times, and a coarse clock (100 ns on Windows) reads
+// an empty measure as zero.
 BENCH_IMPLEMENTATION(WorkTests, Dense, "a", DenseWork) {
-    impl.measure([](DenseWork& work) { work.state.done = work.state.n * (work.state.density == Density::High ? 2 : 1); });
+    impl.measure([](DenseWork& work) {
+        spinFor(1us);
+        work.state.done = work.state.n * (work.state.density == Density::High ? 2 : 1);
+    });
 }
 
 BENCH_IMPLEMENTATION(WorkTests, Dense, "b", DenseWork) {
-    impl.measure([](DenseWork& work) { return work.state.n; });
+    impl.measure([](DenseWork& work) {
+        spinFor(1us);
+        return work.state.n;
+    });
 }
 
 BENCH_WORK(WorkTests, Wrong, SpinState) {

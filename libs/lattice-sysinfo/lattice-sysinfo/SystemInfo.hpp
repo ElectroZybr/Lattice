@@ -161,11 +161,11 @@ struct MachineInfo {
     std::vector<GpuInfo> gpus;
 };
 
-SYSINFO_API std::vector<ProcessorInfo> collectCPU();
-SYSINFO_API std::vector<GpuInfo> collectGpus();
-SYSINFO_API MemoryInfo collectMemory();
-SYSINFO_API OsInfo collectOS();
-SYSINFO_API BuildInfo collectBuild();
+LT_SYSINFO std::vector<ProcessorInfo> collectCPU();
+LT_SYSINFO std::vector<GpuInfo> collectGpus();
+LT_SYSINFO MemoryInfo collectMemory();
+LT_SYSINFO OsInfo collectOS();
+LT_SYSINFO BuildInfo collectBuild();
 
 inline MachineInfo collectMachineInfo() {
     MachineInfo info;

@@ -1,5 +1,5 @@
 #include <lattice-test/Tests.hpp>
-#include <Lattice/tools/TreeFormatter.hpp>
+#include <lattice-tools/TreeFormatter.hpp>
 
 namespace Lattice {
 

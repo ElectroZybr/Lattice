@@ -30,7 +30,8 @@ package("lattice")
         os.cp(path.join(source_root, "Lattice.hpp"), build_root)
         os.cp(path.join(source_root, "Composition.hpp"), build_root)
         os.cp(path.join(source_root, "kernel"), build_root)
-        os.cp(path.join(source_root, "tools"), build_root)
+        local stubs = import("stubs", {rootdir = path.join(package:scriptdir(), "../..")})
+        io.writefile(path.join(build_root, "packaged.lua"), stubs(package, {"lattice-logger", "lattice-sysinfo"}))
 
         os.cd(build_root)
         import("package.tools.xmake").install(package, {

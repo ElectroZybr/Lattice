@@ -10,7 +10,7 @@
 #include <Lattice/kernel/NodeContext.hpp>
 #include <Lattice/kernel/Blueprints.hpp>
 #include <lattice-logger/Logger.hpp>
-#include <Lattice/tools/TreeFormatter.hpp>
+#include <lattice-tools/TreeFormatter.hpp>
 
 namespace Lattice {
 

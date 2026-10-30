@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "Visibility.hpp"
-#include "Lattice/tools/Fixture.hpp"
+#include "lattice-tools/Fixture.hpp"
 
 
 #define TEST2(name, FixtureType) \
@@ -58,7 +58,7 @@ struct TestResult {
     std::string skipReason;
 };
 
-struct LATTICE_TEST_API RunResult {
+struct LT_TEST RunResult {
     size_t registered = 0;
     uint64_t elapsedNs = 0;
     std::vector<TestResult> tests;
@@ -68,8 +68,8 @@ struct LATTICE_TEST_API RunResult {
 };
 
 /// Glob with `*` and `?`; an empty filter matches everything.
-LATTICE_TEST_API bool matches(std::string_view filter, std::string_view name);
-LATTICE_TEST_API std::string_view statusName(Status status);
+LT_TEST bool matches(std::string_view filter, std::string_view name);
+LT_TEST std::string_view statusName(Status status);
 
 }
 
@@ -84,7 +84,7 @@ struct TestCase {
 
 /// Registry and in-process execution. Never writes to the console: presentation is the
 /// caller's (the standard main of lattice-test-main, ltest, a GUI).
-class LATTICE_TEST_API Test {
+class LT_TEST Test {
 public:
     static Test& instance();
 
@@ -111,8 +111,8 @@ public:
     }
 };
 
-LATTICE_TEST_API void testRequire(bool condition, const char* expression, const char* file, int line, std::string_view message = {});
-LATTICE_TEST_API void testCheck(bool condition, const char* expression, const char* file, int line, std::string_view message = {});
-[[noreturn]] LATTICE_TEST_API void testSkip(std::string_view reason);
+LT_TEST void testRequire(bool condition, const char* expression, const char* file, int line, std::string_view message = {});
+LT_TEST void testCheck(bool condition, const char* expression, const char* file, int line, std::string_view message = {});
+[[noreturn]] LT_TEST void testSkip(std::string_view reason);
 
 }

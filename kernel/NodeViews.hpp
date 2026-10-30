@@ -11,12 +11,12 @@
 #include <Lattice/kernel/NodeHandlers.hpp>
 #include <Lattice/kernel/Blueprints.hpp>
 #include <Lattice/kernel/ObjectBlueprint.hpp>
-#include <Lattice/tools/Exception.hpp>
+#include <lattice-tools/Exception.hpp>
 #include <Lattice/kernel/NodeQuery.hpp>
 #include <Lattice/kernel/NodeSystem.hpp>
 #include <Lattice/kernel/CompositionArguments.hpp>
 #include <Lattice/kernel/TreeView.hpp>
-#include <Lattice/tools/TypeName.hpp>
+#include <lattice-tools/TypeName.hpp>
 #include <Lattice/kernel/Visibility.hpp>
 #include <Lattice/kernel/ServiceAPI.hpp>
 

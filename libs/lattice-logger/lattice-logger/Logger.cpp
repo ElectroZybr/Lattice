@@ -266,12 +266,15 @@ std::filesystem::path LogSystem::path_;
 std::ofstream LogSystem::file_;
 std::mutex LogSystem::mutex_;
 std::mutex LogSystem::consoleMutex_;
-thread_local LoggerImpl LogSystem::logger_;
 std::unordered_map<LogSystem::SinkId, LogSystem::Sink> LogSystem::sinks_;
 LogSystem::SinkId LogSystem::nextSinkId_ = 1;
 LogSystem::ConsoleWriter LogSystem::consoleWriter_;
 LogSystem::ConsoleWriterId LogSystem::consoleWriterId_ = 0;
 LogSystem::ConsoleWriterId LogSystem::nextConsoleWriterId_ = 1;
 
-LoggerImpl& LogSystem::current() { return logger_; }
+// Local to the function: a DLL cannot export thread_local data.
+LoggerImpl& LogSystem::current() {
+    thread_local LoggerImpl logger;
+    return logger;
+}
 const std::filesystem::path& LogSystem::getPath() { return path_; }

@@ -120,9 +120,9 @@ struct AffineFit {
     bool valid = false;
 };
 
-BMRUNNER_API AffineFit fitAffine(std::span<const ComplexityPoint> points);
+LBM_API AffineFit fitAffine(std::span<const ComplexityPoint> points);
 
-class BMRUNNER_API Analysis {
+class LBM_API Analysis {
     std::vector<AnalysisRequest> requests_;
 
 public:

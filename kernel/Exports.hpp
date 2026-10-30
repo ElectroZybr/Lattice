@@ -17,13 +17,14 @@
 #include <variant>
 #include <vector>
 
+#include <Lattice/kernel/Compiler.hpp>
 #include <Lattice/kernel/Consts.hpp>
-#include <Lattice/tools/Exception.hpp>
-#include <Lattice/tools/TypeName.hpp>
-#include <Lattice/kernel/Param.hpp>
-#include <Lattice/kernel/Value.hpp>
+#include <lattice-tools/Exception.hpp>
+#include <lattice-tools/TypeName.hpp>
+#include <lattice-tools/Param.hpp>
+#include <lattice-tools/Value.hpp>
 #include <lattice-logger/Logger.hpp>
-#include "Lattice/tools/TreeFormatter.hpp"
+#include "lattice-tools/TreeFormatter.hpp"
 
 namespace Lattice {
 
@@ -285,7 +286,7 @@ struct TypedParam final : ParamState {
 
     T* field = nullptr;
     const Executor* executor = nullptr;
-    [[no_unique_address]] Bounds bounds{};
+    LATTICE_NO_UNIQUE_ADDRESS Bounds bounds{};
     std::vector<T> choices;
     size_t maxLength = std::numeric_limits<size_t>::max();
     std::function<ParamResult(const T&)> setter;

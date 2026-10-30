@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | [lattice-test](../../../libs/lattice-test/README.md) | `TEST`, `REQUIRE`, `CHECK`, `SKIP`; реестр, запуск в процессе, результаты, формат отчёта | lattice-tools |
 | `lattice-test-main` (там же) | стандартный `main` тестового бинарника: фильтр, список, вывод, отчёт для ltest | lattice-test, lattice-logger |
-| [ltest](../../../libs/ltest/README.md) | приложение: поиск наборов, отдельный процесс на набор, таймаут, общая сводка | lattice-test, lattice-logger |
+| [ltest](../../../libs/ltest-app/README.md) | приложение: поиск наборов, отдельный процесс на набор, таймаут, общая сводка | lattice-test, lattice-logger |
 
 Набор — это только сценарии: `main` в тестовых файлах не пишется. Цель зависит от
 `lattice-test-main` (в ядре) или подключает пакет `lattice-test` (в проектах) — статический
@@ -80,4 +80,4 @@ auto report = Lattice::Test::instance().run("Parser_*", {
 
 Для изоляции процессом приложение запускает `ltest run ... --json` и читает `ltest-v1`.
 В LatticeLab `./LatticeLab -t [аргументы ltest]` до создания runtime передаёт аргументы
-`ltest` из пакета.
+`ltest` из пакета `ltest-app`.

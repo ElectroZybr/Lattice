@@ -14,7 +14,7 @@
 #include <Lattice/kernel/StartupConfig.hpp>
 #include <Lattice/kernel/Requirements.hpp>
 #include <Lattice/kernel/Node.hpp>
-#include <Lattice/tools/Exception.hpp>
+#include <lattice-tools/Exception.hpp>
 #include <Lattice/kernel/DLLoader.hpp>
 #include <Lattice/kernel/Context.hpp>
 #include <Lattice/kernel/NodeViews.hpp>

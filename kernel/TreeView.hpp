@@ -34,9 +34,9 @@ struct TreeNodeInfo {
 
 // Lazy pre-order traversal. Structural mutation invalidates active iterators,
 // just like mutation of a standard container invalidates its iterators.
-class LATTICE_API TreeTraversal {
+class LT_API TreeTraversal {
 public:
-    class Iterator {
+    class LT_API Iterator {
     public:
         using iterator_category = std::input_iterator_tag;
         using value_type = TreeEntry;
@@ -85,7 +85,7 @@ private:
 // Read-only access to the runtime tree. The view deliberately exposes stable
 // ids and copied values, never Node references that could be invalidated by a
 // later tree mutation.
-class LATTICE_API TreeView {
+class LT_API TreeView {
 public:
     TreeView() = default;
     explicit TreeView(NodeSystem& nodes) : nodes_(&nodes) {}

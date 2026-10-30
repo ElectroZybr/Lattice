@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <charconv>
 #include <sstream>
-#include <Lattice/tools/Exception.hpp>
+#include <lattice-tools/Exception.hpp>
 namespace Lattice::Testing {
 using Error = Exception<RunResult>;
 namespace {

@@ -20,8 +20,8 @@
 #include <deque>
 #include <memory>
 #include <thread>
-#include <Lattice/tools/Exception.hpp>
-#include <Lattice/tools/Fixture.hpp>
+#include <lattice-tools/Exception.hpp>
+#include <lattice-tools/Fixture.hpp>
 
 
 namespace Lattice::Benchmarks {

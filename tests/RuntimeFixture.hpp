@@ -5,7 +5,7 @@
 #include "Lattice/kernel/DLLoader.hpp"
 #include "Lattice/kernel/NodeViews.hpp"
 #include "Lattice/kernel/PackageManager.hpp"
-#include "Lattice/tools/Fixture.hpp"
+#include "lattice-tools/Fixture.hpp"
 
 namespace Lattice {
 

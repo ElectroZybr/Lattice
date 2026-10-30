@@ -11,7 +11,7 @@
 
 namespace Lattice::Benchmarks {
 
-class BMRUNNER_API AmdDfMemoryTraffic : public MemoryTrafficBackend {
+class LBM_API AmdDfMemoryTraffic : public MemoryTrafficBackend {
     static constexpr size_t CounterCount = 8;
 
     std::array<PerfEvent, CounterCount> events_;
@@ -32,11 +32,6 @@ public:
     uint64_t end() override;
 
 private:
-    static PerfEvent openCounter(
-        uint32_t type,
-        int cpu,
-        uint64_t config
-    );
     void close();
 };
 

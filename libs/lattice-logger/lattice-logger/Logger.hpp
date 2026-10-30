@@ -13,7 +13,7 @@
 
 #include <lattice-logger/LogMode.hpp>
 #include <lattice-logger/LogStyle.hpp>
-#include <Lattice/tools/TextFormatter.hpp>
+#include <lattice-tools/TextFormatter.hpp>
 #include <lattice-logger/Visibility.hpp>
 
 
@@ -22,7 +22,7 @@ struct LogEvent {
     TextFormatter text;
 };
 
-class LOGGER_API LoggerImpl {
+class LT_LOGGER LoggerImpl {
 public:
     void print(Level level, const TextFormatter& text, bool isScopeFinal = false);
     void printBlank();
@@ -74,7 +74,7 @@ private:
 };
 
 
-class LOGGER_API LogSystem {
+class LT_LOGGER LogSystem {
 public:
     using SinkId = uint64_t;
     using Sink = std::function<void(const LogEvent&)>;
@@ -102,7 +102,6 @@ private:
     static std::ofstream file_;
     static std::mutex mutex_;
     static std::mutex consoleMutex_;
-    static thread_local LoggerImpl logger_;
 
     static std::unordered_map<SinkId, Sink> sinks_;
     static SinkId nextSinkId_;

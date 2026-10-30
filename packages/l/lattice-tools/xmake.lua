@@ -19,5 +19,5 @@ package("lattice-tools")
     on_test(function (package)
         assert(package:check_cxxsnippets({test = [[
             void test() { Lattice::Value value{42}; (void)value; }
-        ]]}, {configs = {languages = "c++23"}, includes = "Lattice/kernel/Value.hpp"}))
+        ]]}, {configs = {languages = "c++23"}, includes = "lattice-tools/Value.hpp"}))
     end)

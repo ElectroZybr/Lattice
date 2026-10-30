@@ -1,5 +1,5 @@
 target("lattice-tools")
     set_kind("headeronly")
     add_includedirs(".", {public = true})
-    add_headerfiles("(Lattice/**.hpp)")
+    add_headerfiles("(lattice-tools/*.hpp)")
     add_packages("glm", {public = true})

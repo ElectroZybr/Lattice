@@ -19,12 +19,13 @@ option("lattice_external_tools")
 option_end()
 
 if has_config("lattice_external_tools") then
-    add_requires("lattice-logger", "lattice-sysinfo")
+    -- lattice-logger and lattice-sysinfo as installed packages, written by the package recipe.
+    includes("packaged.lua")
     if has_config("lattice_build_extras") then
         add_requires("lbm-runner", "lattice-test")
     end
 else
-    includes("libs/ltest", "libs/lattice-test", "libs/lattice-tools", "libs/lattice-logger", "libs/lattice-sysinfo", "libs/lbm-runner", "libs/lbm-history", "libs/lbm")
+    includes("libs/ltest-app", "libs/lattice-test", "libs/lattice-tools", "libs/lattice-logger", "libs/lattice-sysinfo", "libs/lbm-runner", "libs/lbm-history", "libs/lbm-app")
 end
 
 target("Lattice")
@@ -34,16 +35,10 @@ target("Lattice")
     add_defines("LATTICE_BUILDING_LIBRARY")
 
     add_files("kernel/**.cpp")
-    add_files("tools/*.cpp")
-    if has_config("lattice_external_tools") then
-        add_packages("lattice-logger", "lattice-sysinfo", {public = true})
-    else
-        add_deps("lattice-logger", "lattice-sysinfo", {public = true})
-    end
+    add_deps("lattice-logger", "lattice-sysinfo", {public = true})
 
     add_headerfiles("Lattice.hpp", "Composition.hpp", {prefixdir = "Lattice"})
     add_headerfiles("kernel/(**.hpp)", {prefixdir = "Lattice/kernel"})
-    add_headerfiles("tools/(**.hpp)", {prefixdir = "Lattice/tools"})
 
     add_includedirs("..", {public = true})
 
@@ -61,7 +56,8 @@ if has_config("lattice_build_extras") then
         set_kind("binary")
 
         add_files("tests/*.cpp")
-        add_defines('LATTICE_TEST_PACKAGES="' .. path.absolute("tests/TestPackages") .. '"')
+        -- Forward slashes: Windows takes them, and a backslash would escape in the string literal.
+        add_defines('LATTICE_TEST_PACKAGES="' .. path.absolute("tests/TestPackages"):gsub("\\", "/") .. '"')
 
         for _, dir in ipairs(os.dirs("tests/TestPackages/*")) do
             includes(dir)

@@ -1,47 +1,30 @@
 #include "Perf.hpp"
 
-#include <linux/perf_event.h>
-
 namespace Lattice::Benchmarks {
 
 Perf::Perf() {
-    events_[0] = openCounter(
-        PERF_COUNT_HW_CPU_CYCLES,
-        -1
-    );
+    events_[0] = PerfEvent::hardware(HardwareCounter::Cycles);
 
-    if (!events_[0].available())
+    if (!events_[0].available()) {
+        reason_ = events_[0].unavailableReason();
         return;
+    }
 
-    const int leader = events_[0].fd();
+    const PerfEvent* leader = &events_[0];
 
-    events_[1] = openCounter(PERF_COUNT_HW_INSTRUCTIONS, leader);
-    events_[2] = openCounter(PERF_COUNT_HW_CACHE_REFERENCES, leader);
-    events_[3] = openCounter(PERF_COUNT_HW_CACHE_MISSES, leader);
-    events_[4] = openCounter(PERF_COUNT_HW_BRANCH_INSTRUCTIONS, leader);
-    events_[5] = openCounter(PERF_COUNT_HW_BRANCH_MISSES, leader);
+    events_[1] = PerfEvent::hardware(HardwareCounter::Instructions, leader);
+    events_[2] = PerfEvent::hardware(HardwareCounter::CacheReferences, leader);
+    events_[3] = PerfEvent::hardware(HardwareCounter::CacheMisses, leader);
+    events_[4] = PerfEvent::hardware(HardwareCounter::Branches, leader);
+    events_[5] = PerfEvent::hardware(HardwareCounter::BranchMisses, leader);
 
     for (const PerfEvent& event : events_) {
         if (!event.available()) {
+            reason_ = event.unavailableReason();
             close();
             return;
         }
     }
-}
-
-PerfEvent Perf::openCounter(uint64_t config, int group) {
-    perf_event_attr attr{};
-
-    attr.type = PERF_TYPE_HARDWARE;
-    attr.config = config;
-    attr.disabled = group < 0 ? 1 : 0;
-    attr.exclude_kernel = 1;
-    attr.exclude_hv = 1;
-    attr.read_format =
-        PERF_FORMAT_TOTAL_TIME_ENABLED |
-        PERF_FORMAT_TOTAL_TIME_RUNNING;
-
-    return PerfEvent(attr, 0, -1, group);
 }
 
 Perf::Result Perf::readCounters() const {
@@ -71,8 +54,8 @@ void Perf::begin() {
     if (!available())
         return;
 
-    events_[0].reset(PERF_IOC_FLAG_GROUP);
-    events_[0].enable(PERF_IOC_FLAG_GROUP);
+    events_[0].reset(true);
+    events_[0].enable(true);
 }
 
 void Perf::start() {
@@ -94,7 +77,7 @@ Metrics Perf::end() {
     if (!available())
         return {};
 
-    events_[0].disable(PERF_IOC_FLAG_GROUP);
+    events_[0].disable(true);
 
     totals_ += sample_;
     ++samples_;

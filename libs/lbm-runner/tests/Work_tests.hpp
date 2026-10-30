@@ -6,7 +6,7 @@
 #include <string_view>
 #include <vector>
 
-#include <Lattice/tools/Fixture.hpp>
+#include <lattice-tools/Fixture.hpp>
 
 namespace Lattice {
 

@@ -8,7 +8,7 @@ namespace Lattice {
 class NodeSystem;
 template<class> class Slot;
 
-class LATTICE_API NodeFactory {
+class LT_API NodeFactory {
     NodeSystem& nodeSystem_;
     template<class> friend class Slot;
 

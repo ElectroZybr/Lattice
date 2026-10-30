@@ -9,8 +9,8 @@
 #include <vector>
 #include <type_traits>
 #include <utility>
-#include <Lattice/tools/Exception.hpp>
-#include <Lattice/tools/TypeName.hpp>
+#include <lattice-tools/Exception.hpp>
+#include <lattice-tools/TypeName.hpp>
 #include <Lattice/kernel/Blueprints.hpp>
 #include <Lattice/kernel/Consts.hpp>
 #include <Lattice/kernel/NodeContext.hpp>

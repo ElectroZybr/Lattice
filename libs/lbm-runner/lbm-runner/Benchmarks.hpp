@@ -7,7 +7,7 @@
 #include <lbm-runner/BenchTypes.hpp>
 #include <lbm-runner/Results.hpp>
 #include <lbm-runner/Work.hpp>
-#include <Lattice/tools/Fixture.hpp>
+#include <lattice-tools/Fixture.hpp>
 #include <lbm-runner/Visibility.hpp>
 
 
@@ -81,7 +81,7 @@ struct Info {
     std::string_view description;
 };
 
-class BMRUNNER_API Registrar {
+class LBM_API Registrar {
 public:
     Registrar(
         std::string_view group,
@@ -92,7 +92,7 @@ public:
     );
 };
 
-class BMRUNNER_API GroupRegistrar {
+class LBM_API GroupRegistrar {
 public:
     GroupRegistrar(
         std::string_view group,
@@ -100,32 +100,32 @@ public:
     );
 };
 
-BMRUNNER_API void run(std::string_view name);
+LBM_API void run(std::string_view name);
 /// Бенчи по фильтру: пусто — все; имя группы или бенча; маска `*`/`?` по `group/name`.
 /// Печатает как обычно и возвращает таблицу результатов со сводкой исполнителей.
-BMRUNNER_API ResultTable runFiltered(std::string_view filter);
+LBM_API ResultTable runFiltered(std::string_view filter);
 /// Точка входа набора (см. BmRunner/Main.hpp):
 /// `[filter] [--filter f] [--tsv file] [--sweep axis] [--axis axis=v1,v2] [--list]`.
 /// CLI output: default progress only, -v text + progress, -vv legacy text.
 /// Progress is terminal-only; runFiltered/run/runAll keep their existing callbacks/output.
-BMRUNNER_API int runMain(int argc, char** argv, std::string_view build);
-BMRUNNER_API void runGroup(std::string_view group);
-BMRUNNER_API void runAll();
+LBM_API int runMain(int argc, char** argv, std::string_view build);
+LBM_API void runGroup(std::string_view group);
+LBM_API void runAll();
 
-BMRUNNER_API std::vector<Info> list();
-BMRUNNER_API std::vector<std::string_view> groups();
+LBM_API std::vector<Info> list();
+LBM_API std::vector<std::string_view> groups();
 
-BMRUNNER_API void setSampleCallback(SampleCallback callback);
-BMRUNNER_API void setResultCallback(ResultCallback callback);
-BMRUNNER_API void setCompleteCallback(CompleteCallback callback);
+LBM_API void setSampleCallback(SampleCallback callback);
+LBM_API void setResultCallback(ResultCallback callback);
+LBM_API void setCompleteCallback(CompleteCallback callback);
 /// Сводка работ, измеренных на нескольких исполнителях (runGroup / runAll).
-BMRUNNER_API void setComparisonCallback(ComparisonCallback callback);
-BMRUNNER_API void disableComparisonCallback();
+LBM_API void setComparisonCallback(ComparisonCallback callback);
+LBM_API void disableComparisonCallback();
 
-BMRUNNER_API void disableSampleCallback();
-BMRUNNER_API void disableResultCallback();
-BMRUNNER_API void disableCompleteCallback();
-BMRUNNER_API void disableCallbacks();
-BMRUNNER_API void resetCallbacks();
+LBM_API void disableSampleCallback();
+LBM_API void disableResultCallback();
+LBM_API void disableCompleteCallback();
+LBM_API void disableCallbacks();
+LBM_API void resetCallbacks();
 
 }

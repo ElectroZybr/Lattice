@@ -5,7 +5,7 @@
 #include <fstream>
 #include <set>
 
-#include <Lattice/tools/Exception.hpp>
+#include <lattice-tools/Exception.hpp>
 
 namespace Lattice::BmHistory {
 

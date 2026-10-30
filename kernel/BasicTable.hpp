@@ -7,7 +7,7 @@
 #include <unordered_map>
 #include <utility>
 
-#include <Lattice/kernel/TableAPI.hpp>
+#include <lattice-tools/TableAPI.hpp>
 
 
 namespace Lattice {

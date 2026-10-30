@@ -13,6 +13,10 @@ target("lattice-test")
 target("lattice-test-main")
     set_kind("static")
     add_files("main/Main.cpp")
+    -- link.exe infers the subsystem from main in the object files, not in a library.
+    if is_plat("windows") then
+        add_ldflags("/SUBSYSTEM:CONSOLE", {public = true})
+    end
     add_deps("lattice-test", {public = true})
     add_deps("lattice-logger", {public = true})
 

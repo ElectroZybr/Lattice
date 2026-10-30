@@ -9,8 +9,8 @@
 #include <Lattice/kernel/Consts.hpp>
 #include <Lattice/kernel/Package.hpp>
 #include <Lattice/kernel/Visibility.hpp>
-#include <Lattice/tools/TypeName.hpp>
-#include <Lattice/tools/ObjectRegistry.hpp>
+#include <lattice-tools/TypeName.hpp>
+#include <lattice-tools/ObjectRegistry.hpp>
 
 class NodeBuild;
 class NodeConfigure;
@@ -32,7 +32,7 @@ struct BlueprintMeta {
     const BlueprintOps* ops = nullptr;
 };
 
-struct LATTICE_API Blueprint {
+struct LT_API Blueprint {
     std::string name;
     std::vector<BlueprintId> bases;
     BlueprintMeta meta;
@@ -43,7 +43,7 @@ struct LATTICE_API Blueprint {
     std::string_view namespaceName() const noexcept;
 };
 
-class LATTICE_API Blueprints : public ObjectRegistry<Blueprint, BlueprintId, std::string> {
+class LT_API Blueprints : public ObjectRegistry<Blueprint, BlueprintId, std::string> {
     using Base = ObjectRegistry<Blueprint, BlueprintId, std::string>;
 
 public:

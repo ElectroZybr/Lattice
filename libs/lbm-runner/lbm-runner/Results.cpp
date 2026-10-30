@@ -8,7 +8,7 @@
 #include <tuple>
 #include <variant>
 
-#include <Lattice/tools/Exception.hpp>
+#include <lattice-tools/Exception.hpp>
 
 namespace Lattice::Benchmarks {
 

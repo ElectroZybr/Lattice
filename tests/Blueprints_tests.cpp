@@ -21,6 +21,14 @@ TEST(Blueprints_TemplateNames, BlueprintsFixture,
     REQUIRE(types.require(stage).namespaceName() == "Lattice");
 }
 
+TEST(Blueprints_AnonymousNamespace, BlueprintsFixture,
+    "Анонимное пространство имён clang `(anonymous namespace)` с пробелом не обрывает короткое имя.") {
+    const auto shortName = [](std::string name) { return Blueprint{.name = std::move(name)}.shortName(); };
+    REQUIRE(shortName("Lattice::(anonymous namespace)::View") == "View");
+    REQUIRE(shortName("Lattice::{anonymous}::View") == "View");
+    REQUIRE(shortName("Lattice::Holder<Lattice::(anonymous namespace)::View>") == "Holder<View>");
+}
+
 TEST(Blueprints_Namespaces, BlueprintsFixture) {
     auto& types = fixture.blueprints;
     const auto gpu = types.add("GPU::Device");

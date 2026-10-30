@@ -1,7 +1,7 @@
 #pragma once
 
+#include <charconv>
 #include <cstdint>
-#include <cstdio>
 #include <filesystem>
 #include <format>
 #include <optional>
@@ -32,13 +32,14 @@ struct VersionRange {
 
     static Version parseVersion(std::string_view str) {
         Version version{};
-        std::sscanf(
-            str.data(),
-            "%hhu.%hhu.%hhu",
-            &version.major,
-            &version.minor,
-            &version.patch
-        );
+        const char* it = str.data();
+        const char* const end = it + str.size();
+        for (uint8_t* part : {&version.major, &version.minor, &version.patch}) {
+            const auto [next, error] = std::from_chars(it, end, *part);
+            if (error != std::errc{} || next == end || *next != '.')
+                break;
+            it = next + 1;
+        }
 
         return version;
     }

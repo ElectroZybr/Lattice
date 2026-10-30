@@ -5,7 +5,12 @@ target("lbm-runner")
     set_version("0.1.0", {soname = true})
     set_symbols("hidden")
     add_defines("BMRUNNER_BUILDING_LIBRARY")
-    add_files("lbm-runner/**.cpp")
+    add_files("lbm-runner/**.cpp|Metrics/platform/*.cpp")
+    if is_plat("linux") then
+        add_files("lbm-runner/Metrics/platform/Linux.cpp")
+    else
+        add_files("lbm-runner/Metrics/platform/Unsupported.cpp")
+    end
     add_headerfiles("(lbm-runner/**.hpp)")
     add_includedirs(".", {public = true})
     add_packages("indicators")

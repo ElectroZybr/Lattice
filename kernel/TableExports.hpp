@@ -3,7 +3,7 @@
 #include <concepts>
 #include <cstdint>
 
-#include <Lattice/kernel/TableAPI.hpp>
+#include <lattice-tools/TableAPI.hpp>
 #include <Lattice/kernel/NodeViews.hpp>
 
 namespace Lattice {

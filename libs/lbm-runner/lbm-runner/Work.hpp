@@ -13,8 +13,8 @@
 #include <lbm-runner/Axis.hpp>
 #include <lbm-runner/Bench.hpp>
 #include <lbm-runner/Visibility.hpp>
-#include <Lattice/tools/Exception.hpp>
-#include <Lattice/tools/TypeName.hpp>
+#include <lattice-tools/Exception.hpp>
+#include <lattice-tools/TypeName.hpp>
 
 /**
  @file Work.hpp
@@ -265,8 +265,8 @@ struct ImplementationRegistration {
     void (*run)(Bench&, WorkBase&, const ImplementationRegistration&);
 };
 
-BMRUNNER_API void registerWork(WorkRegistration registration);
-BMRUNNER_API void registerImplementation(ImplementationRegistration registration);
+LBM_API void registerWork(WorkRegistration registration);
+LBM_API void registerImplementation(ImplementationRegistration registration);
 
 namespace Detail {
 

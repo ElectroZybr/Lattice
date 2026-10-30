@@ -5,7 +5,7 @@
 #include <vector>
 
 #include <Lattice/kernel/Node.hpp>
-#include <Lattice/tools/ObjectRegistry.hpp>
+#include <lattice-tools/ObjectRegistry.hpp>
 
 namespace Lattice {
 

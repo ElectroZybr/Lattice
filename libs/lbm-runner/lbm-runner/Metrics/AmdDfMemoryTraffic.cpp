@@ -1,12 +1,6 @@
 #include "AmdDfMemoryTraffic.hpp"
 
-#include <cerrno>
 #include <cstdint>
-#include <cstring>
-#include <fstream>
-#include <string>
-
-#include <linux/perf_event.h>
 
 namespace Lattice::Benchmarks {
 
@@ -23,61 +17,14 @@ static constexpr uint64_t configs[] = {
     0x00000001000038c7
 };
 
-int readInt(const char* path) {
-    std::ifstream file(path);
-
-    int value = -1;
-    file >> value;
-
-    return value;
-}
-
-int readCpu() {
-    std::ifstream file(
-        "/sys/bus/event_source/devices/amd_df/cpumask"
-    );
-
-    std::string mask;
-    file >> mask;
-
-    if (mask.empty())
-        return -1;
-
-    try {
-        return std::stoi(mask);
-    } catch (...) {
-        return -1;
-    }
-}
-
 }
 
 AmdDfMemoryTraffic::AmdDfMemoryTraffic() {
-    const int type = readInt(
-        "/sys/bus/event_source/devices/amd_df/type"
-    );
-
-    const int cpu = readCpu();
-
-    if (type < 0 || cpu < 0) {
-        unavailableReason_ =
-            "amd_df PMU is missing; run 'sudo modprobe amd_uncore' "
-            "and add amd_uncore to /etc/modules-load.d/amd-uncore.conf";
-        return;
-    }
-
     for (size_t i = 0; i < CounterCount; ++i) {
-        events_[i] = openCounter(
-            static_cast<uint32_t>(type),
-            cpu,
-            configs[i]
-        );
+        events_[i] = PerfEvent::uncore("amd_df", configs[i]);
 
         if (!events_[i].available()) {
-            unavailableReason_ = std::string(
-                "perf_event_open failed: "
-            ) + std::strerror(errno) +
-                "; try 'sudo sysctl -w kernel.perf_event_paranoid=-1'";
+            unavailableReason_ = events_[i].unavailableReason();
             close();
             return;
         }
@@ -129,24 +76,6 @@ uint64_t AmdDfMemoryTraffic::end() {
     constexpr uint64_t BytesPerCount = 64;
 
     return count * BytesPerCount;
-}
-
-PerfEvent AmdDfMemoryTraffic::openCounter(
-    uint32_t type,
-    int cpu,
-    uint64_t config
-) {
-    perf_event_attr attr{};
-
-    attr.type = type;
-    attr.config = config;
-    attr.disabled = 1;
-
-    attr.read_format =
-        PERF_FORMAT_TOTAL_TIME_ENABLED |
-        PERF_FORMAT_TOTAL_TIME_RUNNING;
-
-    return PerfEvent(attr, -1, cpu);
 }
 
 void AmdDfMemoryTraffic::close() {

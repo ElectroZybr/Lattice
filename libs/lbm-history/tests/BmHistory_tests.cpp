@@ -10,7 +10,7 @@
 #include <lbm-history/Repository.hpp>
 #include <lbm-history/Statistics.hpp>
 #include <lattice-test/Tests.hpp>
-#include <Lattice/tools/Exception.hpp>
+#include <lattice-tools/Exception.hpp>
 
 namespace Lattice {
 

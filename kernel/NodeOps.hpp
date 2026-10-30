@@ -14,12 +14,16 @@ namespace Lattice {
 
 class NodeSystem;
 
-class LATTICE_API NodeOps {
+class LT_API NodeOps {
     NodeSystem& nodeSystem_;
 
 public:
     NodeOps(NodeSystem& nodeSystem)
         : nodeSystem_(nodeSystem) {}
+
+    // Explicit: an exported class on Windows instantiates its implicit copy.
+    NodeOps(const NodeOps&) = delete;
+    NodeOps& operator=(const NodeOps&) = delete;
 
     void onRetire(NodeId id, std::function<void(void*)> callback);
     void onMaintain(NodeId id, std::function<void(void*)> callback);

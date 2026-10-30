@@ -13,7 +13,7 @@
 
 namespace Lattice {
 
-class LATTICE_API NodeSystem {
+class LT_API NodeSystem {
 public:
     Blueprints& blueprints;
     NodeRegistry registry;
@@ -34,6 +34,9 @@ public:
         , choices(*this)
         , ops(*this)
         , builder(*this) {}
+
+    NodeSystem(const NodeSystem&) = delete;
+    NodeSystem& operator=(const NodeSystem&) = delete;
 };
 
 }

@@ -6,7 +6,7 @@
 
 #include <lattice-logger/LogScope.hpp>
 #include <lattice-logger/Logger.hpp>
-#include <Lattice/tools/Exception.hpp>
+#include <lattice-tools/Exception.hpp>
 
 #include <lattice-test/Report.hpp>
 #include <lattice-test/Tests.hpp>

@@ -25,7 +25,7 @@ public:
     virtual uint64_t end() = 0;
 };
 
-class BMRUNNER_API MemoryTraffic : public MetricCapability<"MemoryTraffic", MemoryTraffic> {
+class LBM_API MemoryTraffic : public MetricCapability<"MemoryTraffic", MemoryTraffic> {
     using Clock = std::chrono::steady_clock;
 
     std::unique_ptr<MemoryTrafficBackend> backend_;

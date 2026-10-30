@@ -36,7 +36,7 @@
 
 - Ошибки — `Lattice::Exception<Owner>`, в файле `using Error = Lattice::Exception<Owner>;`.
 - Комментарий — там, где без него непонятно; код не пересказывать.
-- Публичные заголовки ставятся под `Lattice/kernel/` и `Lattice/tools/` (см. `xmake.lua`).
+- Публичные заголовки ставятся под `Lattice/kernel/` и `lattice-tools/` (см. `xmake.lua`).
 
 ## Тесты
 

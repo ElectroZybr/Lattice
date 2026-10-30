@@ -11,10 +11,10 @@
 #include <Lattice/kernel/NodeViews.hpp>
 
 // Tools
-#include <Lattice/tools/Exception.hpp>
+#include <lattice-tools/Exception.hpp>
 #include <lattice-logger/Logger.hpp>
-#include <Lattice/tools/TextStyle.hpp>
-#include <Lattice/tools/TextTheme.hpp>
-#include <Lattice/tools/TextPattern.hpp>
-#include <Lattice/tools/TableFormatter.hpp>
-#include <Lattice/tools/TreeFormatter.hpp>
+#include <lattice-tools/TextStyle.hpp>
+#include <lattice-tools/TextTheme.hpp>
+#include <lattice-tools/TextPattern.hpp>
+#include <lattice-tools/TableFormatter.hpp>
+#include <lattice-tools/TreeFormatter.hpp>

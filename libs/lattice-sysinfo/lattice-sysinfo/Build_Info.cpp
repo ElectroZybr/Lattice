@@ -1,14 +1,9 @@
 #include "SystemInfo.hpp"
 
 #include <charconv>
-#include <filesystem>
 #include <string_view>
 
-#if defined(_WIN32)
-#include <windows.h>
-#elif defined(__APPLE__)
-#include <mach-o/dyld.h>
-#endif
+#include "platform/Platform.hpp"
 
 #ifndef BUILD_VERSION
 #define BUILD_VERSION "0.0.0"
@@ -17,37 +12,6 @@
 namespace Lattice::SystemInfo {
 
 namespace {
-
-namespace fs = std::filesystem;
-
-std::string executableName() {
-#if defined(__linux__)
-    std::error_code error;
-    const fs::path executable = fs::read_symlink("/proc/self/exe", error);
-
-    if (!error)
-        return executable.filename().string();
-#elif defined(_WIN32)
-    std::vector<wchar_t> path(32768);
-    const DWORD size = GetModuleFileNameW(
-        nullptr,
-        path.data(),
-        static_cast<DWORD>(path.size())
-    );
-
-    if (size != 0 && size < path.size())
-        return fs::path(path.data(), path.data() + size).filename().string();
-#elif defined(__APPLE__)
-    uint32_t size = 0;
-    _NSGetExecutablePath(nullptr, &size);
-    std::vector<char> path(size);
-
-    if (_NSGetExecutablePath(path.data(), &size) == 0)
-        return fs::path(path.data()).filename().string();
-#endif
-
-    return "unknown";
-}
 
 void parseVersion(std::string_view version, BuildInfo& info) {
     uint32_t* parts[] = {
@@ -73,7 +37,8 @@ void parseVersion(std::string_view version, BuildInfo& info) {
 
 BuildInfo collectBuild() {
     BuildInfo info;
-    info.executable = executableName();
+    const auto executable = Platform::executable();
+    info.executable = executable.empty() ? "unknown" : executable.filename().string();
     parseVersion(BUILD_VERSION, info);
 
 #if defined(__clang__)

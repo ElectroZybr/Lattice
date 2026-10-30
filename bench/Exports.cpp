@@ -15,10 +15,9 @@
 #include <thread>
 #include <vector>
 
-#include <malloc.h>
-
 #include <lbm-runner/Benchmarks.hpp>
 #include <lbm-runner/Metrics.hpp>
+#include <lbm-runner/Metrics/Heap.hpp>
 #include <Lattice/tests/RuntimeFixture.hpp>
 
 using namespace Lattice;
@@ -84,37 +83,6 @@ public:
 
     /// Wait until everything posted so far has run.
     void drain() { call([] {}); }
-};
-
-/// Bytes the heap gained over the measured part of an iteration.
-class Heap : public MetricCapability<"Heap", Heap> {
-    size_t start_ = 0;
-    double bytes_ = 0;
-    std::vector<double> samples_;
-
-    static size_t used() {
-        const auto info = mallinfo2();
-        return info.uordblks + info.hblkhd;
-    }
-
-public:
-    inline static constexpr auto bytes = defineMetric("bytes", Unit::Bytes, MetricFlags::PerIteration);
-    inline static constexpr auto Schema = defineSchema(bytes);
-
-    void begin() override { bytes_ = 0; }
-    void start() override { start_ = used(); }
-    void stop() override { bytes_ += static_cast<double>(used()) - static_cast<double>(start_); }
-    Metrics end() override {
-        samples_.push_back(bytes_);
-        return {.schema = Schema, .values = {bytes_}};
-    }
-    Metrics result() override {
-        if (samples_.empty()) return {};
-        std::ranges::sort(samples_);
-        const double median = samples_[samples_.size() / 2];
-        samples_.clear();
-        return {.schema = Schema, .values = {median}};
-    }
 };
 
 enum class Route { Direct, Inline, Thread };

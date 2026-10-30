@@ -12,7 +12,7 @@ class NodeRegistry;
 class Blueprints;
 class NodeContext;
 
-class LATTICE_API NodeQuery {
+class LT_API NodeQuery {
     NodeRegistry& registry_;
     Blueprints& blueprints_;
     NodeContext& context_;

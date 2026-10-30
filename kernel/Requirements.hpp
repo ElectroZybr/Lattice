@@ -5,7 +5,7 @@
 #include <string_view>
 #include <vector>
 
-#include <Lattice/tools/TypeName.hpp>
+#include <lattice-tools/TypeName.hpp>
 #include <Lattice/kernel/Blueprints.hpp>
 #include <Lattice/kernel/Visibility.hpp>
 
@@ -31,13 +31,13 @@ struct PackageCatalog {
     std::vector<BlueprintId> provided;
 };
 
-LATTICE_API std::vector<CompileDep>& compileDepSink();
-LATTICE_API std::vector<PackageCatalog>& packageCatalogs();
-LATTICE_API bool check(std::string_view name, const Blueprints& blueprints);
-LATTICE_API std::vector<std::string> uniqueList(std::string_view name, const Blueprints& blueprints);
-LATTICE_API std::vector<std::string> printUniqueList(std::string_view name, const Blueprints& blueprints);
-LATTICE_API void printCompositionTree(std::string_view name, const Blueprints& blueprints);
-LATTICE_API void recordPackageCatalog(PackageCatalog catalog);
+LT_API std::vector<CompileDep>& compileDepSink();
+LT_API std::vector<PackageCatalog>& packageCatalogs();
+LT_API bool check(std::string_view name, const Blueprints& blueprints);
+LT_API std::vector<std::string> uniqueList(std::string_view name, const Blueprints& blueprints);
+LT_API std::vector<std::string> printUniqueList(std::string_view name, const Blueprints& blueprints);
+LT_API void printCompositionTree(std::string_view name, const Blueprints& blueprints);
+LT_API void recordPackageCatalog(PackageCatalog catalog);
 
 inline constexpr std::string_view tag = "Requirements";
 

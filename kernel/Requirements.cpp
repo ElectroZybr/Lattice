@@ -1,6 +1,6 @@
 #include <Lattice/kernel/Requirements.hpp>
 #include <lattice-logger/Logger.hpp>
-#include "Lattice/tools/TreeFormatter.hpp"
+#include "lattice-tools/TreeFormatter.hpp"
 
 #include <format>
 #include <unordered_set>

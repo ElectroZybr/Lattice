@@ -4,9 +4,9 @@
 #include <cstdint>
 #include <format>
 
-#include <unistd.h>
-
 #include <lattice-sysinfo/SystemInfo.hpp>
+
+#include "platform/Platform.hpp"
 
 namespace Lattice::BmHistory {
 
@@ -21,7 +21,7 @@ uint32_t fnv1a(std::string_view text) {
     return hash;
 }
 
-std::string quoted(std::string_view value) {
+std::string tomlString(std::string_view value) {
     std::string result = "\"";
     for (const char c : value) {
         if (c == '"' || c == '\\')
@@ -32,11 +32,11 @@ std::string quoted(std::string_view value) {
 }
 
 std::string hostName() {
-    char buffer[256] = {};
-    if (gethostname(buffer, sizeof buffer - 1) != 0 || !buffer[0])
+    const std::string name = Platform::systemHostName();
+    if (name.empty())
         return "host";
     std::string host;
-    for (const char* c = buffer; *c && *c != '.'; ++c)
+    for (const char* c = name.c_str(); *c && *c != '.'; ++c)
         host += std::isalnum(static_cast<unsigned char>(*c)) || *c == '-' ? char(std::tolower(*c)) : '-';
     return host;
 }
@@ -54,7 +54,7 @@ Machine currentMachine() {
     for (const auto& cpu : processors) {
         fingerprint += std::format("cpu {} {} {}\n", cpu.name, cpu.cores.size(), cpu.maxFrequencyHz);
         description += std::format("\n[[cpu]]\nname = {}\ncores = {}\nmax_frequency_hz = {}\n",
-            quoted(cpu.name), cpu.cores.size(), cpu.maxFrequencyHz);
+            tomlString(cpu.name), cpu.cores.size(), cpu.maxFrequencyHz);
         for (const auto& cache : cpu.caches) {
             fingerprint += std::format("cache L{} {} {}\n", cache.level, int(cache.type), cache.sizeBytes);
             description += std::format("cache_l{}_{} = {}\n", cache.level, int(cache.type), cache.sizeBytes);
@@ -65,12 +65,12 @@ Machine currentMachine() {
     for (const auto& gpu : gpus) {
         fingerprint += std::format("gpu {} {} {} {}\n", gpu.name, gpu.driver, gpu.computeInfo, gpu.vramBytes);
         description += std::format("\n[[gpu]]\nname = {}\ndriver = {}\ncompute = {}\nvram_bytes = {}\n",
-            quoted(gpu.name), quoted(gpu.driver), quoted(gpu.computeInfo), gpu.vramBytes);
+            tomlString(gpu.name), tomlString(gpu.driver), tomlString(gpu.computeInfo), gpu.vramBytes);
     }
 
     const std::string host = hostName();
     const std::string id = std::format("{}-{:08x}", host, fnv1a(fingerprint));
-    return {.id = id, .description = std::format("id = {}\nhost = {}\n", quoted(id), quoted(host)) + description};
+    return {.id = id, .description = std::format("id = {}\nhost = {}\n", tomlString(id), tomlString(host)) + description};
 }
 
 }

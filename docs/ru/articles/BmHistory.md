@@ -25,7 +25,7 @@ baseline, находить деградации и коммит, после ко
 |---|---|---|
 | `libs/lbm-runner` | модель запуска (`RunResult`: окружение + бенчи), запись в TSV, точка входа набора `Benchmarks::main(argc, argv)` (`--list`, `--filter`, `--tsv <файл>`) | SysInfo, Logger |
 | `libs/lbm-history` (новая) | репозиторий результатов (раскладка, слияние частичного запуска, коммит с метаданными), чтение TSV и истории, baseline-теги, сравнение и статистика | BmRunner (модель), SysInfo, Logger |
-| `libs/lbm` (новая), цель `lbm` | CLI lattice-benchmarks: команды, вывод таблиц, конфигурация наборов (`lbm.toml`, свой разбор подмножества TOML) | BmHistory |
+| `libs/lbm-app` (новая), цель `lbm` | CLI lattice-benchmarks: команды, вывод таблиц, конфигурация наборов (`lbm.toml`, свой разбор подмножества TOML) | BmHistory |
 | LatticeLab | наборы `*.bench` через `Benchmarks::main`; `lbm-results/` в `.gitignore`; список наборов в конфигурации `lbm` | — |
 
 Зависимости `BmHistory` и `lbm` — только библиотеки `libs/`, без runtime Lattice: вынос в

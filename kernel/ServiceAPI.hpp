@@ -18,7 +18,7 @@ enum class ServiceLaunch {
 };
 
 // Kernel-internal service base; packages declare services with ObjectBuild::service.
-struct LATTICE_API ServiceAPI {
+struct LT_API ServiceAPI {
     ServiceAPI() = default;
     ServiceAPI(const ServiceAPI&) = delete;
     ServiceAPI& operator=(const ServiceAPI&) = delete;

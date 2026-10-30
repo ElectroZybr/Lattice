@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <string_view>
 
 #include <lbm-runner/Metrics/PerfEvent.hpp>
@@ -11,7 +12,7 @@
 
 namespace Lattice::Benchmarks {
 
-class BMRUNNER_API Cache : public MetricCapability<"Cache", Cache> {
+class LBM_API Cache : public MetricCapability<"Cache", Cache> {
 public:
     inline static constexpr auto l1dReads = defineMetric(
         "l1dReads",
@@ -94,6 +95,7 @@ private:
 
     std::array<PerfEvent, CounterCount> events_;
     std::array<PerfEvent::Snapshot, CounterCount> starts_;
+    std::string reason_;
 
     Result sample_{};
     Result totals_{};
@@ -119,9 +121,7 @@ public:
     bool available() const noexcept override;
 
     std::string_view unavailableReason() const noexcept override {
-        return
-            "required cache perf events are unsupported or unavailable; try "
-            "'sudo sysctl -w kernel.perf_event_paranoid=-1'";
+        return reason_;
     }
 
     void begin() override;
@@ -135,20 +135,6 @@ private:
     Result readCounters() const;
     static Metrics makeMetrics(const Result& result);
 
-    static uint64_t cacheConfig(
-        uint64_t cache,
-        uint64_t operation,
-        uint64_t result
-    ) noexcept;
-
-    static PerfEvent openEvent(uint32_t type, uint64_t config);
-    static PerfEvent openCacheEvent(
-        uint64_t cache,
-        uint64_t operation,
-        uint64_t result
-    );
-
-    static bool supportsAmdZenRawEvents() noexcept;
     void close();
 };
 

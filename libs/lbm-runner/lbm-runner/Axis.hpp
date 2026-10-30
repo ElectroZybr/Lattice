@@ -13,7 +13,7 @@
 
 #include <lbm-runner/Analysis.hpp>
 #include <lbm-runner/Visibility.hpp>
-#include <Lattice/tools/Exception.hpp>
+#include <lattice-tools/Exception.hpp>
 
 namespace Lattice::Benchmarks {
 
@@ -51,8 +51,8 @@ struct AxisValue {
 };
 
 /// Значения осей из командной строки: `--sweep <ось>`, `--axis <ось>=v1,v2`.
-BMRUNNER_API bool sweeping(std::string_view axis);
-BMRUNNER_API const std::vector<std::string>* axisOverride(std::string_view axis);
+LBM_API bool sweeping(std::string_view axis);
+LBM_API const std::vector<std::string>* axisOverride(std::string_view axis);
 
 namespace Axes {
 

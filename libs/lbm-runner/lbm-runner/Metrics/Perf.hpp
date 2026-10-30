@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <string_view>
 
 #include <lbm-runner/Stages.hpp>
@@ -11,7 +12,7 @@
 
 namespace Lattice::Benchmarks {
 
-class BMRUNNER_API Perf : public MetricCapability<"Perf", Perf> {
+class LBM_API Perf : public MetricCapability<"Perf", Perf> {
 public:
     inline static constexpr auto cycles = defineMetric(
         "cycles", Unit::Cycles, MetricFlags::PerIteration
@@ -122,6 +123,7 @@ private:
 
     std::array<PerfEvent, CounterCount> events_;
     std::array<PerfEvent::Snapshot, CounterCount> starts_;
+    std::string reason_;
 
     Result sample_{};
     Result totals_{};
@@ -139,9 +141,7 @@ public:
     }
 
     std::string_view unavailableReason() const noexcept override {
-        return
-            "perf events are unavailable; try "
-            "'sudo sysctl -w kernel.perf_event_paranoid=-1'";
+        return reason_;
     }
 
     void begin() override;
@@ -154,7 +154,6 @@ private:
     static Metrics makeMetrics(const Result& value);
 
     Result readCounters() const;
-    static PerfEvent openCounter(uint64_t config, int group);
     void close();
 };
 

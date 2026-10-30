@@ -2,7 +2,7 @@
 
 #include <Lattice/kernel/Blueprints.hpp>
 #include <Lattice/kernel/Builder.hpp>
-#include <Lattice/tools/Exception.hpp>
+#include <lattice-tools/Exception.hpp>
 #include <Lattice/kernel/NodeSystem.hpp>
 #include <Lattice/kernel/NodeViews.hpp>
 

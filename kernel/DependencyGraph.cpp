@@ -1,7 +1,7 @@
 #include <algorithm>
 
 #include <Lattice/kernel/DependencyGraph.hpp>
-#include <Lattice/tools/Exception.hpp>
+#include <lattice-tools/Exception.hpp>
 
 namespace Lattice {
 

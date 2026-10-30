@@ -7,7 +7,7 @@
 
 #include <Lattice/kernel/Consts.hpp>
 #include <Lattice/kernel/Visibility.hpp>
-#include <Lattice/tools/ObjectRegistry.hpp>
+#include <lattice-tools/ObjectRegistry.hpp>
 
 
 namespace Lattice {
@@ -54,7 +54,7 @@ struct ContextResolution {
     }
 };
 
-class LATTICE_API NodeContext {
+class LT_API NodeContext {
     NodeRegistry& registry_;
 
     RoleRegistry roles_;

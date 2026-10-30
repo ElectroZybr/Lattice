@@ -55,25 +55,25 @@ struct ResultTable {
 
 /// Строки результата бенча: метрики стадий с семплами, ряды семплов без итоговой
 /// метрики (медиана как значение), числовые значения анализа.
-BMRUNNER_API std::vector<ResultRow> resultRows(const BenchResult& result);
+LBM_API std::vector<ResultRow> resultRows(const BenchResult& result);
 /// Строки сводки вариантов работы: подгонка каждого и пороги `crossover:<slower>`.
-BMRUNNER_API std::vector<ResultRow> resultRows(const Comparison& comparison);
+LBM_API std::vector<ResultRow> resultRows(const Comparison& comparison);
 
 /// Единица в TSV: `ns`, `B/s`…; `-` без единицы.
-BMRUNNER_API std::string_view unitText(Unit unit) noexcept;
-BMRUNNER_API Unit parseUnit(std::string_view text) noexcept;
+LBM_API std::string_view unitText(Unit unit) noexcept;
+LBM_API Unit parseUnit(std::string_view text) noexcept;
 /// Значение выше — лучше (пропускная способность).
 inline bool higherIsBetter(const ResultRow& row) noexcept { return row.unit == "B/s"; }
 
 /// Ключ строки без значения: по нему сливаются и сравниваются таблицы.
-BMRUNNER_API std::string rowKey(const ResultRow& row);
+LBM_API std::string rowKey(const ResultRow& row);
 /// Ключ — без `variant` и `unit`: они выводятся из остальных.
 /// Стабильный порядок: group, bench, implementation, params, n (числом), stage, metric.
-BMRUNNER_API void sortRows(std::vector<ResultRow>& rows);
+LBM_API void sortRows(std::vector<ResultRow>& rows);
 
 /// TSV со стабильным порядком строк и 7 значащими цифрами.
-BMRUNNER_API std::string writeTsv(const ResultTable& table);
+LBM_API std::string writeTsv(const ResultTable& table);
 /// Разбор TSV; ошибка — Exception с номером строки.
-BMRUNNER_API ResultTable parseTsv(std::string_view text);
+LBM_API ResultTable parseTsv(std::string_view text);
 
 }

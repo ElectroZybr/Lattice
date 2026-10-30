@@ -2,19 +2,37 @@
 
 #include <algorithm>
 #include <format>
-#include <Lattice/tools/Exception.hpp>
+#include <lattice-tools/Exception.hpp>
 #include <lattice-logger/Logger.hpp>
-#include <Lattice/tools/TreeFormatter.hpp>
+#include <lattice-tools/TreeFormatter.hpp>
 
 namespace Lattice {
+
+namespace {
+
+// The start of the last name in `text`: after '<', ',' or ' ' outside parentheses, so clang's
+// "(anonymous namespace)" stays one name.
+size_t lastNameStart(std::string_view text) {
+    int depth = 0;
+    for (size_t i = text.size(); i-- > 0;) {
+        if (text[i] == ')')
+            ++depth;
+        else if (text[i] == '(')
+            --depth;
+        else if (depth == 0 && (text[i] == '<' || text[i] == ',' || text[i] == ' '))
+            return i + 1;
+    }
+    return 0;
+}
+
+}
 
 std::string Blueprint::shortName() const {
     std::string result;
     for (size_t i = 0; i < name.size(); ++i) {
         if (name.compare(i, 2, "::") == 0) {
             // Drop the qualifier just copied: back to the start of this name.
-            const auto start = result.find_last_of("<, ");
-            result.erase(start == std::string::npos ? 0 : start + 1);
+            result.erase(lastNameStart(result));
             ++i;
             continue;
         }

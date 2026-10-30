@@ -9,6 +9,8 @@
 #include <string>
 #include <string_view>
 
+#include <Lattice/kernel/Visibility.hpp>
+
 class NodeBuild;
 class NodeConfigure;
 
@@ -94,4 +96,11 @@ struct Package {
 
 inline constexpr std::string_view packageSymbol = "lattice_package";
 
+}
+
+// The entry points of a package, declared exported: its definitions take the export from here.
+extern "C" {
+LT_PACKAGE extern const Lattice::Package lattice_package;
+LT_PACKAGE void compose(NodeBuild root);
+LT_PACKAGE void configure(NodeConfigure root);
 }
