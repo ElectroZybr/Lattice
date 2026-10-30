@@ -255,6 +255,7 @@ inline TextFormatter formatMetrics(
 
 struct LiveState {
     bool active = false;
+    bool enabled = true;
 };
 
 inline LiveState& liveState() {
@@ -337,7 +338,7 @@ inline TextFormatter unavailableLine(
 }
 
 inline void sample(const SampleResult& sample) {
-    if (!hasLiveMetrics(sample.capabilities))
+    if (!liveState().enabled || !hasLiveMetrics(sample.capabilities))
         return;
 
     LiveState& state = liveState();

@@ -2,7 +2,7 @@ package("lbm-runner")
     set_description("Reusable BmRunner library without the Lattice runtime")
     set_license("GPL-3.0-only")
     set_sourcedir(path.join(os.scriptdir(), "../../../libs/lbm-runner"))
-    add_deps("lattice-logger", "lattice-sysinfo")
+    add_deps("lattice-logger", "lattice-sysinfo", "indicators 2.3")
     add_configs("shared", {description = "Build a shared library", default = true, type = "boolean", readonly = true})
     add_links("lbm-runner")
 

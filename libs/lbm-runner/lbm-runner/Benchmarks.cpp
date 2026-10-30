@@ -1,4 +1,5 @@
 #include "Benchmarks.hpp"
+#include "Console.hpp"
 
 #include <algorithm>
 #include <format>
@@ -183,7 +184,8 @@ void runWork(Bench& bench, const WorkRegistration& registration) {
 /// Реализации без своей работы — ошибка, когда фильтр выбирает их работу.
 void checkOrphans(std::string_view filter);
 
-void execute(const Case& benchCase, std::vector<Record>* records = nullptr, ResultTable* table = nullptr) {
+void execute(const Case& benchCase, std::vector<Record>* records = nullptr, ResultTable* table = nullptr,
+             Output::Console* console = nullptr) {
     State& s = state();
 
     const CompleteCallback complete = [&](const BenchResult& result) {
@@ -204,11 +206,15 @@ void execute(const Case& benchCase, std::vector<Record>* records = nullptr, Resu
             });
     };
 
+    const SampleCallback sample = [&](const SampleResult& result) {
+        if (console) console->sample(result);
+        if (s.sample) s.sample(result);
+    };
     Bench bench(
         benchCase.group,
         benchCase.name,
         benchCase.createFixture,
-        s.sample,
+        sample,
         s.result,
         complete
     );
@@ -310,32 +316,40 @@ void checkOrphans(std::string_view filter) {
 
 }
 
-ResultTable runFiltered(std::string_view filter) {
+namespace {
+ResultTable runSelected(std::string_view filter, Output::Mode mode) {
     State& s = state();
     ResultTable table;
     std::vector<Record> records;
-    size_t matched = 0;
 
     checkOrphans(filter);
+    size_t selected = 0;
+    for (BenchId id = 0; id < s.benches.size(); ++id)
+        if (const auto* bench = s.benches.get(id); bench && matches(*bench, filter)) ++selected;
+    if (!selected) throw Exception<Registry>("no benchmark matches '{}'", filter);
+    Output::Console console(mode, selected);
+    console.start("system info");
     beginSession();
     for (BenchId id = 0; id < s.benches.size(); ++id) {
         const Case* bench = s.benches.get(id);
         if (bench && matches(*bench, filter)) {
-            ++matched;
-            execute(*bench, &records, &table);
+            console.start(Output::fullName(bench->group, bench->name));
+            execute(*bench, &records, &table, &console);
+            console.advance();
         }
     }
-    if (!matched)
-        throw Exception<Registry>("no benchmark matches '{}'", filter);
-
     for (const Comparison& comparison : compare(records)) {
         if (s.comparison)
             s.comparison(comparison);
         for (auto& row : resultRows(comparison))
             table.rows.push_back(std::move(row));
     }
+    console.finish();
     return table;
 }
+}
+
+ResultTable runFiltered(std::string_view filter) { return runSelected(filter, Output::Mode::Text); }
 
 void runGroup(std::string_view group) {
     for (const auto& known : groups())
@@ -383,6 +397,7 @@ int runSuite(int argc, char** argv, std::string_view build) {
     std::string filter;
     std::string tsv;
     bool listOnly = false;
+    unsigned verbosity = 0;
     for (int i = 1; i < argc; ++i) {
         const std::string_view argument = argv[i];
         auto value = [&]() -> std::string {
@@ -390,7 +405,11 @@ int runSuite(int argc, char** argv, std::string_view build) {
                 throw Exception<Registry>("{} needs a value", argument);
             return argv[++i];
         };
-        if (argument == "--list")
+        if (argument == "-v" || argument == "--verbose")
+            verbosity = std::min(2u, verbosity + 1);
+        else if (argument == "-vv")
+            verbosity = 2;
+        else if (argument == "--list")
             listOnly = true;
         else if (argument == "--filter")
             filter = value();
@@ -414,7 +433,8 @@ int runSuite(int argc, char** argv, std::string_view build) {
         }
         else if (argument == "--help" || argument == "-h") {
             Logger::message(TextFormatter::format(
-                "usage: {} [filter] [--filter <group|bench|mask>] [--tsv <file>] [--sweep <axis>] [--axis <axis>=<v1,v2>] [--list]", argv[0]));
+                "usage: {} [filter] [--filter <group|bench|mask>] [--tsv <file>] [--sweep <axis>] [--axis <axis>=<v1,v2>] [--list] [-v|-vv]\n"
+                "  default: progress only; -v: text + progress; -vv: legacy text", argv[0]));
             return 0;
         } else if (!argument.starts_with("--") && filter.empty())
             filter = std::string(argument);
@@ -430,7 +450,8 @@ int runSuite(int argc, char** argv, std::string_view build) {
         return 0;
     }
 
-    ResultTable table = runFiltered(filter);
+    ResultTable table = runSelected(filter, verbosity == 0 ? Output::Mode::Progress :
+        verbosity == 1 ? Output::Mode::ProgressAndText : Output::Mode::Text);
     if (!tsv.empty()) {
         std::string suite = argc ? argv[0] : "suite";
         if (const auto slash = suite.find_last_of("/\\"); slash != std::string::npos)

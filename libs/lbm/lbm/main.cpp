@@ -51,6 +51,7 @@ constexpr std::string_view Usage = R"(lattice-benchmarks — usage: lbm <command
   regressions [--since rev] [--suite s]      shifts to the worse; exit code 1 if any
   tag [name [rev]] | tag -d <name>          baselines: list, set (default: the last run), delete
 
+  run output: default progress only; -v text + progress; -vv legacy text
   filter: bench, group or mask (Walls/*Gpu); metric: mask (default Time.median)
   xmake suites are built before list/run unless --no-build
   rev: commit, run id (r0007), tag, HEAD~1
@@ -63,6 +64,7 @@ struct Arguments {
     std::vector<std::string> positional;
     std::map<std::string, std::string> options;
     std::set<std::string> flags;
+    unsigned verbosity = 0;
 
     bool has(std::string_view flag) const { return flags.contains(std::string(flag)); }
     std::string option(std::string_view name, std::string fallback = {}) const {
@@ -80,7 +82,11 @@ Arguments parse(int argc, char** argv, int from) {
     Arguments arguments;
     for (int i = from; i < argc; ++i) {
         const std::string argument = argv[i];
-        if (valued.contains(argument)) {
+        if (argument == "-v" || argument == "--verbose") {
+            arguments.verbosity = std::min(2u, arguments.verbosity + 1);
+        } else if (argument == "-vv") {
+            arguments.verbosity = 2;
+        } else if (valued.contains(argument)) {
             if (i + 1 >= argc)
                 throw Error("{} needs a value", argument);
             arguments.options[argument == "-m" ? "--message" : argument == "-d" ? "--delete" : argument] = argv[++i];
@@ -827,6 +833,7 @@ int run(const Context& context, const Arguments& arguments) {
     std::vector<std::string> suiteArguments;
     if (!filter.empty())
         suiteArguments.push_back(filter);
+    if (arguments.verbosity) suiteArguments.push_back(arguments.verbosity == 1 ? "-v" : "-vv");
     suiteArguments.insert(suiteArguments.end(), {"--tsv", tsv.string()});
     if (const int status = spawn(binary, suiteArguments); status != 0)
         throw Error("suite '{}' failed with status {}", name, status);

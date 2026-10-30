@@ -106,6 +106,8 @@ BMRUNNER_API void run(std::string_view name);
 BMRUNNER_API ResultTable runFiltered(std::string_view filter);
 /// Точка входа набора (см. BmRunner/Main.hpp):
 /// `[filter] [--filter f] [--tsv file] [--sweep axis] [--axis axis=v1,v2] [--list]`.
+/// CLI output: default progress only, -v text + progress, -vv legacy text.
+/// Progress is terminal-only; runFiltered/run/runAll keep their existing callbacks/output.
 BMRUNNER_API int runMain(int argc, char** argv, std::string_view build);
 BMRUNNER_API void runGroup(std::string_view group);
 BMRUNNER_API void runAll();
