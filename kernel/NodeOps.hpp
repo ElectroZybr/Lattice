@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <string>
@@ -31,6 +32,15 @@ public:
     void bindService(NodeId id, std::unique_ptr<ServiceRunner> service);
     ServiceRunner* service(NodeId id) const;
     std::vector<NodeId> services(NodeId root) const;
+    /// The node shows `status`, owned by its object: they live and go together.
+    void bindStatus(NodeId id, const Status& status);
+    /// The node's status: its object's, else its service's; nullptr — the node shows none.
+    const Status* status(NodeId id) const;
+    /// A service that reached its idle checkpoint and then stopped reaching it for this long is stalled.
+    void setStallTimeout(std::chrono::milliseconds timeout) { stallTimeout_ = timeout; }
+    /// Called in maintain, once per change of a node's state or detail (not per touch).
+    uint64_t observeStatus(std::function<void(NodeId, const Status::Snapshot&)> callback);
+    void unobserveStatus(uint64_t token);
     void maintain();
 
     /// Something was built: called at the end of a build and of maintain, outside any
@@ -66,9 +76,6 @@ public:
     /// Ask the node's own object to stop (once); true when it is ready to be destroyed.
     bool retireObject(NodeId id);
 
-    void dumpTree(NodeId id, NodeId highlighted = InvalidNodeId) const;
-    void dumpContext() const;
-
     NodeId resolvePath(NodeId from, std::string_view path) const;
     std::string stringPath(NodeId id) const;
 
@@ -84,10 +91,13 @@ private:
         std::function<void(void*)> maintain;
         std::function<bool(const void*)> ready;
         std::unique_ptr<ServiceRunner> service;
+        const Status* status = nullptr;
+        uint64_t reportedChanges = 0;
         bool retireCalled = false;
     };
     void beginRetire(NodeId id);
     void maintainObjects();
+    void maintainStatuses();
     bool isReadyToDestroy(NodeId id) const;
     bool configurable(NodeId id) const;
     void configure(NodeId id);
@@ -106,6 +116,10 @@ private:
     bool reporting_ = false;
     bool maintainingObjects_ = false;
     NodeId maintainingObject_ = InvalidNodeId;
+    std::vector<std::pair<uint64_t, std::shared_ptr<std::function<void(NodeId, const Status::Snapshot&)>>>>
+        statusObservers_;
+    uint64_t nextStatusObserver_ = 1;
+    std::chrono::milliseconds stallTimeout_{2000};
     std::vector<std::vector<NodeId>> retiring_;
     std::vector<NodeId> destroying_;
 };

@@ -10,7 +10,6 @@
 #include <Lattice/kernel/NodeContext.hpp>
 #include <Lattice/kernel/Blueprints.hpp>
 #include <lattice-logger/Logger.hpp>
-#include <lattice-tools/TreeFormatter.hpp>
 
 namespace Lattice {
 
@@ -26,6 +25,54 @@ void NodeOps::bindService(NodeId id, std::unique_ptr<ServiceRunner> execution) {
 
 ServiceRunner* NodeOps::service(NodeId id) const {
     return id < lifecycle_.size() ? lifecycle_[id].service.get() : nullptr;
+}
+
+void NodeOps::bindStatus(NodeId id, const Status& status) {
+    const auto& node = nodeSystem_.registry.require(id);
+    if (node.state != NodeState::Active || !node.object.constructed)
+        throw Exception<NodeOps>("Status requires an active constructed object");
+    if (lifecycle_.size() <= id) lifecycle_.resize(id + 1);
+    if (lifecycle_[id].status)
+        throw Exception<NodeOps>("Object #{} already shows a status", id);
+    lifecycle_[id].status = &status;
+}
+
+const Status* NodeOps::status(NodeId id) const {
+    if (id >= lifecycle_.size()) return nullptr;
+    const auto& lifecycle = lifecycle_[id];
+    if (lifecycle.status) return lifecycle.status;
+    return lifecycle.service ? &lifecycle.service->status() : nullptr;
+}
+
+uint64_t NodeOps::observeStatus(std::function<void(NodeId, const Status::Snapshot&)> callback) {
+    const auto token = nextStatusObserver_++;
+    statusObservers_.emplace_back(
+        token, std::make_shared<std::function<void(NodeId, const Status::Snapshot&)>>(std::move(callback)));
+    return token;
+}
+
+void NodeOps::unobserveStatus(uint64_t token) {
+    std::erase_if(statusObservers_, [&](const auto& entry) { return entry.first == token; });
+}
+
+void NodeOps::maintainStatuses() {
+    const auto now = std::chrono::steady_clock::now();
+    for (NodeId id = 0; id < lifecycle_.size(); ++id) {
+        auto& lifecycle = lifecycle_[id];
+        if (auto* service = lifecycle.service.get(); service && service->running() && service->beats()) {
+            const auto snapshot = service->status().read();
+            if (snapshot.state == Status::State::Ready && now - snapshot.updated > stallTimeout_)
+                service->status().set(Status::State::Stalled, "no idle checkpoint");
+        }
+        const auto* status = this->status(id);
+        if (!status) continue;
+        const auto snapshot = status->read();
+        if (snapshot.changes == lifecycle.reportedChanges) continue;
+        lifecycle.reportedChanges = snapshot.changes;
+        // Observers may unsubscribe while called: they run from a copy.
+        auto observers = statusObservers_;
+        for (const auto& [token, callback] : observers) (*callback)(id, snapshot);
+    }
 }
 
 std::vector<NodeId> NodeOps::services(NodeId root) const {
@@ -301,6 +348,7 @@ size_t NodeOps::collectRetired() {
 
 void NodeOps::maintain() {
     maintainObjects();
+    maintainStatuses();
     // A Context change reconfigures only the branches whose configure read that role;
     // tree changes were marked when they happened.
     for (const RoleId role : nodeSystem_.context.changedRoles())
@@ -561,97 +609,5 @@ std::string NodeOps::stringPath(NodeId id) const {
     return result;
 }
 
-void NodeOps::dumpTree(NodeId id, NodeId highlighted) const {
-    const auto& root = nodeSystem_.registry.require(id);
-    Lattice::TreeFormatter tree(root.name.empty() ? "Root" : root.name);
-
-    auto append = [&](auto&& self, NodeId current, size_t depth) -> void {
-        for (NodeId childId : nodeSystem_.registry.children(current)) {
-            const auto& child = nodeSystem_.registry.require(childId);
-            std::string line;
-
-            switch (child.kind) {
-                case NodeKind::Folder:
-                    line = std::format("{} <a>F</>", child.name);
-                    break;
-
-                case NodeKind::Object: {
-                    const auto type = nodeSystem_.blueprints.require(child.type()).shortName();
-                    line = child.name.empty()
-                        ? std::format("{} <ok>C</>", type)
-                        : std::format("{}<mut2>::{}</> <ok>C</>", type, child.name);
-                    break;
-                }
-
-                case NodeKind::Slot: {
-                    const auto type = nodeSystem_.blueprints.require(child.bp).shortName();
-                    line = child.name.empty()
-                        ? std::string(type)
-                        : std::format("{}<mut2>::{}</>", type, child.name);
-
-                    line += child.choice != InvalidBlueprintId
-                        ? std::format("<mut2>::</><h>{}</> <h>S</>", nodeSystem_.blueprints.require(child.choice).shortName())
-                        : "<mut2>::</><h>empty</> <h>S</>";
-                    break;
-                }
-
-                case NodeKind::Binding:
-                    line = std::format("{} <wrn>λ</>", child.name);
-                    break;
-
-            }
-
-            if (service(childId)) line += " <a2>[service]</>";
-            if (childId == highlighted)
-                line = std::format("<err>{} 🡸</>", line);
-
-            line += std::format(" <mut2>#{}</>", childId);
-
-            tree.node(line, depth);
-            self(self, childId, depth + 1);
-        }
-    };
-
-    append(append, id, 0);
-    Logger::message(tree.format());
-    Logger::blank();
-}
-
-void NodeOps::dumpContext() const {
-    Lattice::TreeFormatter tree("Context");
-
-    const auto label = [this](NodeId id) -> std::string {
-        if (id == InvalidNodeId) return "Empty";
-        return nodeSystem_.registry.get(id) ? stringPath(id) : std::format("missing #{}", id);
-    };
-
-    tree.node("<h>Scopes</>", 0);
-
-    for (ContextScopeId id = 0; id < nodeSystem_.context.scopeCount(); ++id) {
-        const auto* scope = nodeSystem_.context.scope(id);
-        if (!scope) continue;
-
-        std::string state;
-        if (id == nodeSystem_.context.root()) state += " <a>[root]</>";
-        if (nodeSystem_.context.isActive(id)) state += " <a>[active]</>";
-
-        const auto type = scope->type == InvalidBlueprintId ? std::string_view{"untyped"} : nodeSystem_.blueprints.require(scope->type).name;
-
-        tree.node(std::format("{}{} <mut2>#{} [{}]</>", label(scope->owner), state, id, type), 1);
-
-        for (const auto& entry : scope->roles)
-            tree.node(std::format("{} ➜ <mut2>{}</>", nodeSystem_.context.roleName(entry.role), label(entry.target)), 2);
-    }
-
-    tree.node("<h>Resolved roles</>", 0);
-
-    for (RoleId role = 0; role < nodeSystem_.context.roleCount(); ++role) {
-        if (!nodeSystem_.context.hasRole(role)) continue;
-        tree.node(std::format("{} ➜ <mut2>{}</>", nodeSystem_.context.roleName(role), label(nodeSystem_.context.resolve(role))), 1);
-    }
-
-    Logger::message(tree.format());
-    Logger::blank();
-}
 
 }

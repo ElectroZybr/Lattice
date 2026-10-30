@@ -1,7 +1,9 @@
 #include <atomic>
 #include <chrono>
 #include <functional>
+#include <stdexcept>
 #include <thread>
+#include <vector>
 #include <Lattice/Composition.hpp>
 #include <Lattice/tests/RuntimeFixture.hpp>
 #include <lattice-test/Tests.hpp>
@@ -192,6 +194,99 @@ TEST(Service_PreservesObjectLifecycleHooks, RuntimeFixture) {
     ready = true;
     nodes.ops.maintain();
     REQUIRE(!nodes.registry.get(id));
+}
+
+
+namespace {
+// Stops reaching its idle checkpoint while `pause` is set; throws when `fail` is set.
+struct Beating {
+    std::atomic<bool> stop{false}, pause{false}, fail{false};
+    void run(const std::function<void()>& idle) {
+        while (!stop) {
+            if (fail) throw std::runtime_error("broken input");
+            if (!pause) idle();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }
+    void requestStop() { stop = true; }
+};
+
+// An ordinary class with a status of its own, written from its thread.
+struct Link {
+    Status status;
+};
+}
+
+TEST(Service_StatusFollowsRun, RuntimeFixture,
+    "Статус сервиса ведёт ядро: ready, пока run работает, left после штатного выхода.") {
+    auto beating = fixture.build(fixture.root).emplace<Beating>("loop");
+    beating.service(&Beating::run, &Beating::requestStop);
+    auto& ops = fixture.run_ctx.nodes.ops;
+    auto* service = ops.service(beating.id());
+    service->start();
+    REQUIRE(ops.status(beating.id())->read().state == Status::State::Ready);
+    service->stop();
+    REQUIRE(ops.status(beating.id())->read().state == Status::State::Left);
+}
+
+TEST(Service_ExceptionFailsTheServiceOnly, RuntimeFixture,
+    "Исключение из run останавливает сервис со статусом failed и текстом, процесс продолжает работу.") {
+    auto beating = fixture.build(fixture.root).emplace<Beating>("loop");
+    beating.service(&Beating::run, &Beating::requestStop);
+    auto& ops = fixture.run_ctx.nodes.ops;
+    auto* service = ops.service(beating.id());
+    service->start();
+    beating->fail = true;
+    REQUIRE(eventually([&] { return !service->running(); }));
+    const auto status = ops.status(beating.id())->read();
+    REQUIRE(status.state == Status::State::Failed);
+    REQUIRE(status.detail == "broken input");
+}
+
+TEST(Service_StallsWithoutIdleAndRecovers, RuntimeFixture,
+    "Сервис, переставший доходить до idle дольше порога, — stalled; следующий idle возвращает ready.") {
+    auto beating = fixture.build(fixture.root).emplace<Beating>("loop");
+    beating.service(&Beating::run, &Beating::requestStop);
+    auto& ops = fixture.run_ctx.nodes.ops;
+    ops.setStallTimeout(std::chrono::milliseconds(20));
+    auto* service = ops.service(beating.id());
+    service->start();
+    REQUIRE(eventually([&] { return service->beats(); }));
+    beating->pause = true;
+    REQUIRE(eventually([&] {
+        ops.maintain();
+        return ops.status(beating.id())->read().state == Status::State::Stalled;
+    }));
+    beating->pause = false;
+    REQUIRE(eventually([&] { return ops.status(beating.id())->read().state == Status::State::Ready; }));
+    service->stop();
+}
+
+TEST(Status_ObserversSeeChangesNotTouches, RuntimeFixture,
+    "Статус объекта пишется из чужого потока; StatusView читает снимок, наблюдатель вызывается в maintain раз на смену состояния, не на touch.") {
+    auto link = fixture.build(fixture.root).emplace<Link>("link");
+    link.status(link->status);
+    auto& ops = fixture.run_ctx.nodes.ops;
+    std::vector<Status::State> seen;
+    const auto token = ops.observeStatus([&](NodeId id, const Status::Snapshot& status) {
+        if (id == link.id()) seen.push_back(status.state);
+    });
+    std::thread writer([&] {
+        link->status.set(Status::State::Connecting);
+        for (int i = 0; i < 100; ++i) link->status.touch(std::chrono::microseconds(16));
+    });
+    writer.join();
+    ops.maintain();
+    ops.maintain();
+    link->status.set(Status::State::Lost, "silent");
+    ops.maintain();
+    ops.unobserveStatus(token);
+    REQUIRE((seen == std::vector{Status::State::Connecting, Status::State::Lost}));
+
+    const auto statuses = fixture.build(fixture.root).statuses();
+    const auto shown = statuses.status(link.id());
+    REQUIRE((shown && shown->state == Status::State::Lost && shown->detail == "silent"));
+    REQUIRE(!statuses.status(fixture.root));
 }
 
 }

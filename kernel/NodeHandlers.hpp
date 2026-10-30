@@ -5,6 +5,7 @@
 #include <functional>
 #include <concepts>
 #include <Lattice/kernel/Exports.hpp>
+#include <Lattice/kernel/Status.hpp>
 #include <string_view>
 #include <vector>
 #include <type_traits>
@@ -93,6 +94,9 @@ public:
     template<class F> void readyToDestroy(F&& callback);
     /// Run this object as the branch service: run(T&[, idle]) until stop(T&).
     template<class Run, class Stop> void service(Run run, Stop stop);
+    /// The node shows `status`, which the object owns (a member): tools read it without the
+    /// owner's queue. A service shows its own unless the object declares one.
+    void status(const Status& status);
 };
 
 // Optional and collection arguments are snapshots of existing objects.

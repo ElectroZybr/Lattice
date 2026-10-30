@@ -14,6 +14,8 @@
 
 ## Готово
 
+- [x] [Состояние асинхронных узлов](NodeStatus.md) — `Lattice::Status` объекта на узле (`ObjectBuild::status`), статус сервисов ведёт ядро (`failed`, `stalled`, `left`), `StatusView` и наблюдатели смены, без метки `[service]`; дампы дерева и Context из ядра убраны
+
 - [x] [Инструменты тестов](TestTooling.md) — результаты отдельно от вывода, фильтры, JSON, ltest и прямой LatticeLab -t
 
 - [x] [Lattice Test](../../../libs/lattice-test/README.md) — библиотека и пакет `lattice-test` без runtime, тесты ядра, библиотек и LatticeLab на одном фреймворке

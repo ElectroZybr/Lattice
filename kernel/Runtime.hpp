@@ -170,15 +170,10 @@ public:
     void reportException(const std::exception& error) const {
         auto* fatal = dynamic_cast<const ExceptionBase*>(&error);
         Logger::message("\n<err>~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</>");
-        if (fatal) {
+        if (fatal)
             Logger::exception(fatal->tag(), "{}", error.what());
-            Logger::message("Dump components tree (failed node is red):");
-            run_ctx.nodes.ops.dumpTree(root);
-        } else {
+        else
             Logger::exception(tag, "Unhandled exception: {}", error.what());
-            Logger::message("Dump components tree:");
-            run_ctx.nodes.ops.dumpTree(root);
-        }
         Logger::message("<err>Critical error. Application terminated.</>");
         Logger::message("Crash log: {}", std::string(LogSystem::getPath()));
         Logger::message("<err>~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</>\n");
@@ -186,8 +181,6 @@ public:
 
     void reportUnknownException() const {
         Logger::exception(tag, "Unhandled non-standard exception");
-        Logger::message("Dump components tree");
-        run_ctx.nodes.ops.dumpTree(root);
     }
 
 private:

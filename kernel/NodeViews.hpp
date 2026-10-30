@@ -19,6 +19,7 @@
 #include <lattice-tools/TypeName.hpp>
 #include <Lattice/kernel/Visibility.hpp>
 #include <Lattice/kernel/ServiceAPI.hpp>
+#include <Lattice/kernel/StatusView.hpp>
 
 
 // global types
@@ -626,6 +627,7 @@ public:
     }
 
     Lattice::TreeView tree() const { check(); return Lattice::TreeView{nodeSystem_}; }
+    Lattice::StatusView statuses() const { check(); return Lattice::StatusView{nodeSystem_}; }
     // Runtime views for infrastructure objects (routers, shells); pass to constructors.
     ExportsView exports() const { check(); return ExportsView{nodeSystem_}; }
 
@@ -1143,6 +1145,12 @@ void ObjectBuild<T>::readyToDestroy(F&& callback) {
         [callback = std::forward<F>(callback)](const void* ptr) mutable {
             return static_cast<bool>(std::invoke(callback, *static_cast<const T*>(ptr)));
         });
+}
+
+template<class T>
+void ObjectBuild<T>::status(const Status& status) {
+    auto object = ref();
+    object.runtime()->ops.bindStatus(object.id(), status);
 }
 
 template<class T>

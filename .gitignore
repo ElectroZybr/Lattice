@@ -6,6 +6,7 @@
 /Release/
 /legacy/
 /.xmake/
+/.claude/
 
 # Obsidian
 **/.obsidian/

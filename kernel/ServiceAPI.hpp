@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Lattice/kernel/Consts.hpp>
+#include <Lattice/kernel/Status.hpp>
 #include <Lattice/kernel/Visibility.hpp>
 
 #include <atomic>
@@ -28,8 +29,9 @@ struct LT_API ServiceAPI {
         if (running_.exchange(true))
             return;
 
+        status_.set(Lattice::Status::State::Ready);
         thread_ = std::thread([this] {
-            run();
+            runReporting();
             running_ = false;
         });
     }
@@ -48,6 +50,13 @@ struct LT_API ServiceAPI {
 
     bool running() const { return running_.load(); }
     bool host() const { return host_; }
+
+    /// Ready while it runs, failed when run throws, left once run returns. Every idle
+    /// checkpoint is a sign of life: a service that stops reaching it is stalled.
+    const Lattice::Status& status() const noexcept { return status_; }
+    Lattice::Status& status() noexcept { return status_; }
+    /// The service has reached an idle checkpoint at least once: silence then means a stall.
+    bool beats() const noexcept { return beats_.load(); }
 
     void retire() {
         requestStop();
@@ -71,6 +80,11 @@ protected:
     bool stopRequested();
 
 private:
+    /// run, with the outcome in the status; an exception ends this service, not the process.
+    void runReporting();
+
+    Lattice::Status status_;
+    std::atomic<bool> beats_{false};
     std::thread thread_;
     std::atomic<bool> running_{false};
     std::atomic<bool> stopRequested_{false};
