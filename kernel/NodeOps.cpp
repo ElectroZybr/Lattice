@@ -395,7 +395,7 @@ bool NodeOps::configurable(NodeId id) const {
     const auto* node = nodeSystem_.registry.get(id);
     if (!node || node->state != NodeState::Active)
         return false;
-    const BlueprintId composition = node->kind == NodeKind::Slot ? node->choice : node->bp;
+    const BlueprintId composition = node->composition();
     const auto* blueprint = nodeSystem_.blueprints.get(composition);
     return blueprint && blueprint->meta.configure &&
         std::ranges::find(composing_, id) == composing_.end();
@@ -458,7 +458,7 @@ void NodeOps::configure(NodeId id) {
     std::erase_if(observations_, [id](const auto& entry) { return entry.first == id; });
     std::erase_if(roleObservations_, [id](const auto& entry) { return entry.first == id; });
     const auto& node = nodeSystem_.registry.require(id);
-    const BlueprintId composition = node.kind == NodeKind::Slot ? node.choice : node.bp;
+    const BlueprintId composition = node.composition();
     const auto configure = nodeSystem_.blueprints.require(composition).meta.configure;
     try {
         configure(::NodeConfigure{id, nodeSystem_, id});

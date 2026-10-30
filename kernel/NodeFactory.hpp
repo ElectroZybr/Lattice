@@ -17,12 +17,17 @@ class LT_API NodeFactory {
         std::string_view name,
         BlueprintId bp,
         NodeKind kind,
-        uint64_t discriminator = std::numeric_limits<uint64_t>::max()
+        uint64_t discriminator = std::numeric_limits<uint64_t>::max(),
+        bool candidate = true
     );
 
     void constructObject(NodeId id, BlueprintId implementation);
 
 public:
+    /// The type of a node built from `blueprint`: a composition is its own type; an
+    /// implementation builds a node of its API, as a slot holds it and as `emplace` would.
+    BlueprintId typeOf(BlueprintId blueprint) const;
+
     /// Compose a pending branch again (Choices, once its choice is made).
     void recompose(NodeId id, BlueprintId implementation) { constructObject(id, implementation); }
 

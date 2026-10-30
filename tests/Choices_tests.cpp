@@ -125,7 +125,8 @@ TEST(Choices_ImplementationBuildsAChild, RuntimeFixture,
     const auto hardware = nodes.blueprints.addImplementation(implementation<Renderer, composeHardware>("Hardware"), "Render");
     const auto child = nodes.builder.add(fixture.root, hardware, "main");
     const auto& node = nodes.registry.require(child);
-    REQUIRE(node.kind != NodeKind::Slot && node.bp == hardware);
+    REQUIRE(node.kind != NodeKind::Slot && node.bp == nodes.blueprints.id<Renderer>() && node.choice == hardware,
+            "a node of the API, as a slot holds it; the implementation is its choice");
     REQUIRE(static_cast<const Renderer*>(nodes.factory.resolve(child, nodes.blueprints.id<Renderer>()))->backend() == 2);
     REQUIRE(node.object.bp == nodes.blueprints.id<Hardware>(), "the object is the implementation's type");
     REQUIRE(nodes.exports.find(fixture.root, "main") == InvalidExportId, "a child, not a slot: no choice param");
@@ -142,6 +143,26 @@ TEST(Choices_ConcreteImplementationBuildsAChild, RuntimeFixture,
     REQUIRE(static_cast<const Lamp*>(nodes.factory.resolve(child, nodes.blueprints.id<Lamp>()))->watts == 60);
     nodes.builder.add(fixture.root, lamp, "floor");
     REQUIRE(nodes.exports.find(fixture.root, "lamp") == InvalidExportId, "two parts of one type are not a choice");
+}
+
+TEST(Choices_ImplementationChildIsLikeEmplaced, RuntimeFixture,
+    "Узел из реализации, собранный в любое время, — такой же, как emplace в compose: тип, имя, поиск, configure.") {
+    auto& nodes = fixture.run_ctx.nodes;
+    static int configured;
+    configured = 0;
+    const auto lamp = nodes.blueprints.addImplementation(
+        implementation<Lamp, composeLamp>("Lamp", +[](NodeConfigure) { ++configured; }), "Room");
+    fixture.build(fixture.root).emplace<Lamp>("desk");
+    const auto floor = nodes.builder.add(fixture.root, lamp, "floor");
+    const TreeView tree{nodes};
+    const auto desk = nodes.registry.find("desk", fixture.root, nodes.blueprints.id<Lamp>());
+    REQUIRE(desk != InvalidNodeId && nodes.registry.find("floor", fixture.root, nodes.blueprints.id<Lamp>()) == floor,
+            "both are found by their type");
+    REQUIRE(tree.info(desk).type == "Lamp" && tree.info(floor).type == "Lamp", "one type in the tree");
+    REQUIRE(tree.info(floor).implementation == "Lamp" && configured == 1, "the implementation stays known and configures it");
+    bool refused = false;
+    try { nodes.builder.add(fixture.root, lamp, "desk"); } catch (const ExceptionBase&) { refused = true; }
+    REQUIRE(refused, "a name taken by an emplaced node of the type is taken for the implementation too");
 }
 
 TEST(Choices_SlotWithOneImplementationFillsItself, RuntimeFixture,

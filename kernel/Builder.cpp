@@ -111,11 +111,12 @@ NodeId Builder::create(
         nodeSystem_.registry.require(parent);
     nodeSystem_.blueprints.require(blueprint);
 
-    const BlueprintId implementation = nodeSystem_.blueprints.resolveImplementation(blueprint);
-    if (nodeSystem_.registry.find(instance, parent, implementation) != InvalidNodeId)
+    const BlueprintId type =
+        nodeSystem_.factory.typeOf(nodeSystem_.blueprints.resolveImplementation(blueprint));
+    if (nodeSystem_.registry.find(instance, parent, type) != InvalidNodeId)
         throw Exception<Builder>(
             "Branch '{}:{}' already exists under node #{}",
-            nodeSystem_.blueprints.require(implementation).shortName(),
+            nodeSystem_.blueprints.require(type).shortName(),
             instance,
             parent
         );

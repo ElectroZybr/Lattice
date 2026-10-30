@@ -21,7 +21,8 @@ NodeId NodeFactory::createNode(
     std::string_view name,
     BlueprintId bp,
     NodeKind kind,
-    uint64_t discriminator
+    uint64_t discriminator,
+    bool candidate
 ) {
     NodeId previous = InvalidNodeId;
 
@@ -29,13 +30,13 @@ NodeId NodeFactory::createNode(
         nodeSystem_.registry.require(parent).state == NodeState::Retiring)
         throw Exception<NodeFactory>("Cannot create a node under retiring parent #{}", parent);
 
-    // Sibling compositions of one type are candidates of a choice; parts built from an
-    // implementation (lights of a scene) are plain children, like emplaced ones.
-    if (kind == NodeKind::Object && discriminator == NormalIdentity &&
-        parent != InvalidNodeId && bp != InvalidBlueprintId &&
-        !nodeSystem_.blueprints.require(bp).meta.composeSlot) {
+    // Siblings of one type are candidates of a choice; parts built from an implementation
+    // (lights of a scene) are plain children, they and their choice stay out of it.
+    if (candidate && kind == NodeKind::Object && discriminator == NormalIdentity &&
+        parent != InvalidNodeId && bp != InvalidBlueprintId) {
         for (NodeId child : nodeSystem_.registry.children(parent)) {
-            if (nodeSystem_.registry.require(child).bp == bp) {
+            const auto& sibling = nodeSystem_.registry.require(child);
+            if (sibling.bp == bp && !(sibling.kind == NodeKind::Object && sibling.choice != InvalidBlueprintId)) {
                 previous = child;
                 break;
             }
@@ -193,20 +194,22 @@ NodeId NodeFactory::component(NodeId parent, BlueprintId api, std::string_view i
     nodeSystem_.blueprints.require(api);
 
     const BlueprintId impl = nodeSystem_.blueprints.resolveImplementation(api);
+    const BlueprintId type = typeOf(impl);
+    const bool part = type != impl;
 
-    if (const NodeId existing = nodeSystem_.registry.find(instance, parent, impl); existing != InvalidNodeId) {
+    if (const NodeId existing = nodeSystem_.registry.find(instance, parent, type); existing != InvalidNodeId) {
         const auto& node = nodeSystem_.registry.require(existing);
 
         if (node.state == NodeState::Retiring)
             throw Exception<NodeFactory>("Node #{} is retiring", existing);
 
-        if (node.kind == NodeKind::Object && node.bp == impl)
+        if (node.kind == NodeKind::Object && (part ? node.choice == impl : node.bp == impl))
             return existing;
 
         throw Exception<NodeFactory>("Node '{}' already exists under parent #{}", instance, parent);
     }
 
-    const NodeId id = createNode(parent, instance, impl, NodeKind::Object);
+    const NodeId id = createNode(parent, instance, type, NodeKind::Object, NormalIdentity, !part);
     try {
         constructObject(id, impl);
     } catch (...) {
@@ -216,6 +219,11 @@ NodeId NodeFactory::component(NodeId parent, BlueprintId api, std::string_view i
     }
 
     return id;
+}
+
+BlueprintId NodeFactory::typeOf(BlueprintId blueprint) const {
+    const auto& found = nodeSystem_.blueprints.require(blueprint);
+    return found.meta.composeSlot && !found.bases.empty() ? found.bases.front() : blueprint;
 }
 
 NodeId NodeFactory::component(NodeId parent, std::string_view blueprint, std::string_view instance) {

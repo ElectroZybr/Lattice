@@ -23,7 +23,8 @@ struct Node {
     std::string name;
     NodeId parent = InvalidNodeId;
     BlueprintId bp = InvalidBlueprintId;
-    /// Slot: the selected implementation (composition), independent of the object's type.
+    /// Slot, or a child built from an implementation: the implementation (composition),
+    /// independent of the node's type.
     BlueprintId choice = InvalidBlueprintId;
     NodeKind kind = NodeKind::Folder;
     NodeState state = NodeState::Active;
@@ -31,6 +32,11 @@ struct Node {
 
     /// Declared type, or the object's type for a branch that became an object node.
     BlueprintId type() const noexcept { return bp != InvalidBlueprintId ? bp : object.bp; }
+    bool chosen() const noexcept { return kind == NodeKind::Slot || choice != InvalidBlueprintId; }
+    /// What composes the node: its implementation, else its own blueprint.
+    BlueprintId composition() const noexcept { return chosen() ? choice : bp; }
+    /// What it was built from: its implementation, else its object's type.
+    BlueprintId implementation() const noexcept { return chosen() ? choice : object.bp; }
 };
 
 struct NodeKey {
