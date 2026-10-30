@@ -224,6 +224,10 @@ public:
         return nodeSystem_->exports.resolve(id).argumentTypes;
     }
 
+    std::span<const std::string> argumentNames(Lattice::ExportId id) const {
+        return nodeSystem_->exports.resolve(id).argumentNames;
+    }
+
     size_t requiredArguments(Lattice::ExportId id) const {
         return nodeSystem_->exports.resolve(id).requiredArguments;
     }
@@ -269,6 +273,12 @@ public:
         if (entry.exportId == Lattice::InvalidExportId)
             return {};
         return nodeSystem_->exports.resolve(entry.exportId).argumentTypes;
+    }
+
+    std::span<const std::string> argumentNames(const Lattice::VisibleExport& entry) const {
+        if (entry.exportId == Lattice::InvalidExportId)
+            return {};
+        return nodeSystem_->exports.resolve(entry.exportId).argumentNames;
     }
 
     size_t requiredArguments(const Lattice::VisibleExport& entry) const {
@@ -587,17 +597,18 @@ public:
     }
 
     template<typename... Args, typename F>
-    Lattice::ExportId action(std::string_view name, F&& callback) {
+    Lattice::ExportId action(std::string_view name, F&& callback, Lattice::ArgumentNames<sizeof...(Args)> names = {}) {
         check();
-        const auto id = nodeSystem_.exports.action<Args...>(id_, name, std::forward<F>(callback));
+        const auto id = nodeSystem_.exports.action<Args...>(id_, name, std::forward<F>(callback), names);
         registerLocalExport(name);
         return id;
     }
 
     template<typename... Args, typename F>
-    Lattice::ExportId globalAction(std::string_view name, F&& callback) {
+    Lattice::ExportId globalAction(std::string_view name, F&& callback,
+                                   Lattice::ArgumentNames<sizeof...(Args)> names = {}) {
         check();
-        const auto id = nodeSystem_.exports.action<Args...>(id_, name, std::forward<F>(callback));
+        const auto id = nodeSystem_.exports.action<Args...>(id_, name, std::forward<F>(callback), names);
         registerGlobalExport(name);
         return id;
     }
@@ -978,21 +989,17 @@ Ref<T> ObjectBuild<T>::ref() const {
 
 namespace detail {
 
-template<class... Args>
-inline constexpr bool leadingContext = false;
-template<class... Rest>
-inline constexpr bool leadingContext<ActionContext&, Rest...> = true;
-
 // Register a method of a live object as an action owned by that object's node.
 // A leading ActionContext& parameter receives the invocation context.
 template<bool Global, class T, class Member, class... Args>
-ExportId objectAction(Ref<T> object, std::string_view name, Member member) {
+ExportId objectAction(Ref<T> object, std::string_view name, Member member,
+                      ArgumentNames<exportedArguments<Args...>> names) {
     ::NodeBuild node{object.id(), *object.runtime()};
     const auto add = [&]<class... Exported>(auto callback) {
         if constexpr (Global)
-            return node.template globalAction<Exported...>(name, std::move(callback));
+            return node.template globalAction<Exported...>(name, std::move(callback), names);
         else
-            return node.template action<Exported...>(name, std::move(callback));
+            return node.template action<Exported...>(name, std::move(callback), names);
     };
     if constexpr (leadingContext<Args...>) {
         return [&]<class Context, class... Rest>(std::type_identity<void(Context, Rest...)>) {
@@ -1058,47 +1065,51 @@ void ObjectBuild<T>::executeOn(const Ref<Queue>& queue) {
 
 template<class T>
 template<class Owner, class Result, class... Args>
-ExportId ObjectBuild<T>::action(std::string_view name, Result (Owner::*member)(Args...)) {
-    return detail::objectAction<false, T, decltype(member), Args...>(ref(), name, member);
+ExportId ObjectBuild<T>::action(std::string_view name, Result (Owner::*member)(Args...),
+                                ArgumentNames<detail::exportedArguments<Args...>> names) {
+    return detail::objectAction<false, T, decltype(member), Args...>(ref(), name, member, names);
 }
 
 template<class T>
 template<class Owner, class Result, class... Args>
-ExportId ObjectBuild<T>::action(std::string_view name, Result (Owner::*member)(Args...) const) {
-    return detail::objectAction<false, T, decltype(member), Args...>(ref(), name, member);
+ExportId ObjectBuild<T>::action(std::string_view name, Result (Owner::*member)(Args...) const,
+                                ArgumentNames<detail::exportedArguments<Args...>> names) {
+    return detail::objectAction<false, T, decltype(member), Args...>(ref(), name, member, names);
 }
 
 template<class T>
 template<class... Args, class F>
     requires (!std::is_member_function_pointer_v<std::decay_t<F>>)
-ExportId ObjectBuild<T>::action(std::string_view name, F&& callback) {
+ExportId ObjectBuild<T>::action(std::string_view name, F&& callback, ArgumentNames<sizeof...(Args)> names) {
     auto object = ref();
     ::NodeBuild node{object.id(), *object.runtime()};
     if constexpr (std::is_invocable_v<F&, T&, ActionContext&, Args...>)
         return node.template action<Args...>(name,
             [object, callback = std::forward<F>(callback)](ActionContext& context, Args... args) mutable {
                 std::invoke(callback, *object, context, std::forward<Args>(args)...);
-            });
+            }, names);
     else {
         static_assert(std::is_invocable_v<F&, T&, Args...>,
             "Object action callback must accept (T&, [ActionContext&,] Args...)");
         return node.template action<Args...>(name,
             [object, callback = std::forward<F>(callback)](Args... args) mutable {
                 std::invoke(callback, *object, std::forward<Args>(args)...);
-            });
+            }, names);
     }
 }
 
 template<class T>
 template<class Owner, class Result, class... Args>
-ExportId ObjectBuild<T>::globalAction(std::string_view name, Result (Owner::*member)(Args...)) {
-    return detail::objectAction<true, T, decltype(member), Args...>(ref(), name, member);
+ExportId ObjectBuild<T>::globalAction(std::string_view name, Result (Owner::*member)(Args...),
+                                ArgumentNames<detail::exportedArguments<Args...>> names) {
+    return detail::objectAction<true, T, decltype(member), Args...>(ref(), name, member, names);
 }
 
 template<class T>
 template<class Owner, class Result, class... Args>
-ExportId ObjectBuild<T>::globalAction(std::string_view name, Result (Owner::*member)(Args...) const) {
-    return detail::objectAction<true, T, decltype(member), Args...>(ref(), name, member);
+ExportId ObjectBuild<T>::globalAction(std::string_view name, Result (Owner::*member)(Args...) const,
+                                ArgumentNames<detail::exportedArguments<Args...>> names) {
+    return detail::objectAction<true, T, decltype(member), Args...>(ref(), name, member, names);
 }
 
 template<class T>

@@ -375,7 +375,7 @@ TEST(Composition_ObjectExportsSupportArgumentsAndConstMethods, RuntimeFixture) {
     auto root = fixture.build(fixture.root);
     auto object = root.emplace<ExportMethods>("object");
     auto param = object.param("value", &ExportMethods::value);
-    auto action = object.action("add", &ExportMethods::add);
+    auto action = object.action("add", &ExportMethods::add, {"amount"});
     object.action("read", &ExportMethods::read);
     auto& exports = fixture.run_ctx.nodes.exports;
     REQUIRE(exports.set(param, int64_t(3)));
@@ -435,7 +435,7 @@ TEST(Composition_ObjectActionsReceiveContextAndCanBeGlobal, RuntimeFixture) {
     auto root = fixture.build(fixture.root);
     auto branch = root.branch("branch");
     auto object = branch.emplace<ContextMethods>("object");
-    const auto select = object.action("select", &ContextMethods::select);
+    const auto select = object.action("select", &ContextMethods::select, {"node"});
     object.globalAction("show", &ContextMethods::show);
     object.globalAction("ping", &ContextMethods::ping);
     const auto prompt = object.param("prompt", object->style.prompt);
@@ -466,7 +466,7 @@ TEST(Composition_ObjectActionsReceiveContextAndCanBeGlobal, RuntimeFixture) {
     object.action<int64_t>("bump", [](ContextMethods& self, ActionContext& context, int64_t by) {
         self.calls += int(by);
         context.emit(Value{int64_t(self.calls)});
-    });
+    }, {"by"});
     auto bump = nodes.exports.resolve(nodes.exports.find(object.id(), "bump"));
     ActionContext bumpContext{object.id()};
     const std::vector<Value> by{Value{int64_t(5)}};

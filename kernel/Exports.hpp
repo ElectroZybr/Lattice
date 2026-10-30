@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <charconv>
 #include <functional>
@@ -107,7 +108,18 @@ private:
 struct Action {
     std::function<void(ActionContext&, std::span<const Value>)> invoke;
     std::vector<Value> argumentTypes;
+    std::vector<std::string> argumentNames;
     size_t requiredArguments = 0;
+};
+
+/// The names of an action's arguments, one per argument: tools show them, not the types.
+template<size_t N>
+struct ArgumentNames {
+    std::array<std::string_view, N> names{};
+    ArgumentNames() requires(N == 0) = default;
+    template<class... S>
+        requires(sizeof...(S) == N && N != 0 && (std::convertible_to<const S&, std::string_view> && ...))
+    ArgumentNames(const S&... values) : names{std::string_view(values)...} {}
 };
 
 struct Export {
@@ -128,6 +140,7 @@ struct ResolvedExport {
     ParamResult (*set)(void*, const Value&) = nullptr;
     void (*invoke)(void*, ActionContext&, std::span<const Value>) = nullptr;
     std::span<const Value> argumentTypes;
+    std::span<const std::string> argumentNames;
     size_t requiredArguments = 0;
 
     explicit operator bool() const noexcept {
@@ -161,6 +174,15 @@ struct ParamState {
 };
 
 namespace detail {
+
+template<class... Args>
+inline constexpr bool leadingContext = false;
+template<class... Rest>
+inline constexpr bool leadingContext<ActionContext&, Rest...> = true;
+
+/// Arguments of a method an action exports: a leading ActionContext& is not one.
+template<class... Args>
+inline constexpr size_t exportedArguments = sizeof...(Args) - (leadingContext<Args...> ? 1 : 0);
 
 inline std::string_view valueKind(const Value& value) {
     static constexpr std::string_view names[] = {
@@ -650,7 +672,8 @@ public:
     }
 
     template<typename... Args, typename F>
-    ExportId action(NodeId owner, std::string_view name, F&& callback) {
+    ExportId action(NodeId owner, std::string_view name, F&& callback,
+                    ArgumentNames<sizeof...(Args)> names = {}) {
         static_assert(
             optionalArgumentsAreTrailing<Args...>(),
             "Optional action arguments must follow required arguments"
@@ -686,6 +709,7 @@ public:
                 invokeCallback<Args...>(callback, context, arguments, std::index_sequence_for<Args...>{});
             },
             .argumentTypes = {argumentType<Args>()...},
+            .argumentNames = {names.names.begin(), names.names.end()},
             .requiredArguments = requiredArgumentCount<Args...>()
         });
         if (const Executor* run = executor(owner))
@@ -790,6 +814,7 @@ public:
                 static_cast<Action*>(object)->invoke(context, arguments);
             },
             .argumentTypes = action.argumentTypes,
+            .argumentNames = action.argumentNames,
             .requiredArguments = action.requiredArguments
         };
     }

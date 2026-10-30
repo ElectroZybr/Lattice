@@ -311,12 +311,13 @@ Runtime ищет отмеченные объекты в поддереве ст�
 
 ```cpp
 terminal.param("prompt", terminal->style().prompt);     // значение внутри объекта
-cli.globalAction("cd", &CLI::changeDirectory);          // void(ActionContext&, std::string)
+cli.globalAction("cd", &CLI::changeDirectory, {"path"}); // void(ActionContext&, std::string)
 Lattice::exportTable(atoms);                            // view / addRow для Table
 ```
 
 Метод может принимать `ActionContext&` первым параметром: остальные параметры становятся
-аргументами действия. `globalAction` виден из корня runtime, но принадлежит объекту и
+аргументами действия. У каждого аргумента обязательное имя — последний параметр (`{"path"}`),
+по одному на аргумент, число проверяет компилятор. Инструменты показывают имена, не типы. `globalAction` виден из корня runtime, но принадлежит объекту и
 снимается при его retirement. `Table` — обычный контракт: сам ничего не регистрирует.
 
 ## Правила и свой сеттер параметра

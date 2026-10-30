@@ -16,12 +16,14 @@ TEST(Exports_ActionContextAndTypedArguments, RuntimeFixture,
             received = std::move(path);
             context.setNode(child);
             context.emit(Value{"done"});
-        }
+        },
+        {"path"}
     );
 
     ResolvedExport resolved = fixture.run_ctx.nodes.exports.resolve(action);
     REQUIRE(resolved.invoke != nullptr);
     REQUIRE(resolved.argumentTypes.size() == 1);
+    REQUIRE(resolved.argumentNames.size() == 1 && resolved.argumentNames[0] == "path");
     REQUIRE(resolved.requiredArguments == 1);
     REQUIRE(resolved.argumentTypes.front().is<std::string>());
 
@@ -40,7 +42,8 @@ TEST(Exports_OptionalTrailingActionArgument, RuntimeFixture,
     std::optional<std::string> received;
     const ExportId action = fixture.build(fixture.root).action<std::optional<std::string>>(
         "run",
-        [&](std::optional<std::string> name) { received = std::move(name); }
+        [&](std::optional<std::string> name) { received = std::move(name); },
+        {"name"}
     );
 
     ResolvedExport resolved = fixture.run_ctx.nodes.exports.resolve(action);

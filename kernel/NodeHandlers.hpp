@@ -70,19 +70,23 @@ public:
     /// `queue->post(work)` plain param writes are handed over without waiting. Declare it
     /// before the exports; the object then depends on the queue's node.
     template<class Queue> void executeOn(const Ref<Queue>& queue);
-    // Methods may take ActionContext& as their first parameter.
+    // Methods may take ActionContext& as their first parameter. Every argument is named.
     template<class Owner, class Result, class... Args>
-    ExportId action(std::string_view name, Result (Owner::*member)(Args...));
+    ExportId action(std::string_view name, Result (Owner::*member)(Args...),
+                    ArgumentNames<detail::exportedArguments<Args...>> names = {});
     template<class Owner, class Result, class... Args>
-    ExportId action(std::string_view name, Result (Owner::*member)(Args...) const);
+    ExportId action(std::string_view name, Result (Owner::*member)(Args...) const,
+                    ArgumentNames<detail::exportedArguments<Args...>> names = {});
     /// Action implemented in composition: callback(T&, [ActionContext&,] Args...).
     template<class... Args, class F>
         requires (!std::is_member_function_pointer_v<std::decay_t<F>>)
-    ExportId action(std::string_view name, F&& callback);
+    ExportId action(std::string_view name, F&& callback, ArgumentNames<sizeof...(Args)> names = {});
     template<class Owner, class Result, class... Args>
-    ExportId globalAction(std::string_view name, Result (Owner::*member)(Args...));
+    ExportId globalAction(std::string_view name, Result (Owner::*member)(Args...),
+                          ArgumentNames<detail::exportedArguments<Args...>> names = {});
     template<class Owner, class Result, class... Args>
-    ExportId globalAction(std::string_view name, Result (Owner::*member)(Args...) const);
+    ExportId globalAction(std::string_view name, Result (Owner::*member)(Args...) const,
+                          ArgumentNames<detail::exportedArguments<Args...>> names = {});
     template<class F> void onRetire(F&& callback);
     /// Called on the host at each maintain(), only while this object is active.
     template<class F> void onMaintain(F&& callback);

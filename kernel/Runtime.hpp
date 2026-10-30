@@ -54,11 +54,11 @@ public:
         node.globalAction<std::string, std::optional<std::string>>("add",
             [this](ActionContext& context, std::string blueprint, std::optional<std::string> name) {
                 addChild(context.node(), blueprint, name.value_or(std::string{}));
-            });
+            }, {"type", "name"});
         node.globalAction<std::string, std::optional<std::string>>("del",
             [this](ActionContext& context, std::string blueprint, std::optional<std::string> name) {
                 delChild(context.node(), blueprint, name);
-            });
+            }, {"type", "name"});
     }
 
     int run(int argc, char** argv) {
