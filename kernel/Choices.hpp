@@ -43,8 +43,9 @@ struct PendingChoice {
  * source — the scope's resolution and candidates, the slot's implementation and the
  * implementations of its API.
  *
- * A focus point (focus<T>() in compose) always has a choice; a role gets one where its
- * scope holds two candidates or more. A slot has one on its parent, under the slot's name.
+ * A focus point (focus<T>() in compose) always has a choice; a role gets one where a
+ * branch scope holds two candidates or more. Shared objects are candidates of the root,
+ * which gets a choice only when an ambiguous role is used there (requireFocus). A slot has one on its parent, under the slot's name.
  * A slot with a single implementation fills itself on first need (ref(), the end of a
  * composition, maintain); with several it waits for an explicit choice.
  */

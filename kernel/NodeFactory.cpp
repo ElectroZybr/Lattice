@@ -342,8 +342,8 @@ void NodeFactory::share(NodeId id, BlueprintId api) {
     const ContextScopeId scope = nodeSystem_.context.createScope(root);
     const RoleId role = nodeSystem_.context.role(nodeSystem_.blueprints.require(api).name);
 
+    // No choice param at the root: a focus point declares one, an ambiguous use asks for it.
     nodeSystem_.context.addCandidate(scope, role, id);
-    nodeSystem_.choices.offer(scope, role);
 }
 
 NodeId NodeFactory::binding(NodeId parent, std::string_view name) {

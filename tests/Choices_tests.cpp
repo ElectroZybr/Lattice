@@ -18,12 +18,14 @@ struct Probe { int changes = 0; };
 std::string text(Exports& exports, ExportId id) { return exports.value(id).get<std::string>(); }
 
 TEST(Choices_FocusIsAParam, RuntimeFixture,
-    "Два кандидата роли — параметр выбора `device` на владельце scope: чтение и запись идут в Context.") {
+    "Точка фокуса — параметр выбора `device` на владельце scope: чтение и запись идут в Context. Общие кандидаты сами параметра не заводят.") {
     auto& nodes = fixture.run_ctx.nodes;
     auto root = fixture.build(fixture.root);
     root.emplaceShared<Cpu, Device>("cpu");
     auto gpu = root.emplaceShared<Gpu, Device>("gpu");
     const auto role = nodes.context.role(typeKey<Device>());
+    REQUIRE(nodes.exports.find(fixture.root, "device") == InvalidExportId);
+    root.focus<Device>();
     const ExportId device = nodes.exports.find(fixture.root, "device");
     REQUIRE(device != InvalidExportId);
     REQUIRE(nodes.exports.find(fixture.root, "cpu") == InvalidExportId);
@@ -56,8 +58,7 @@ TEST(Choices_OnlyCandidateIsPinnedOnUse, RuntimeFixture,
     REQUIRE(focus->kind() == 1);
     root.emplaceShared<Gpu, Device>("gpu");
     REQUIRE(focus->kind() == 1);
-    const ExportId device = nodes.exports.find(fixture.root, "device");
-    REQUIRE(device != InvalidExportId && text(nodes.exports, device) == "cpu");
+    REQUIRE(nodes.exports.find(fixture.root, "device") == InvalidExportId);
 
     nodes.ops.destroyBranch(first.id());
     REQUIRE(focus->kind() == 2);
@@ -76,7 +77,7 @@ TEST(Choices_LocalFocusPoint, RuntimeFixture,
 
     REQUIRE(nodes.exports.set(fastDevice, std::string{"gpu"}));
     REQUIRE(local->kind() == 2);
-    REQUIRE(text(nodes.exports, nodes.exports.find(fixture.root, "device")).empty());
+    REQUIRE(nodes.exports.find(fixture.root, "device") == InvalidExportId);
 }
 
 TEST(Choices_WriteWakesObservers, RuntimeFixture,
@@ -102,6 +103,7 @@ TEST(Choices_NameTakenFallsBackToRoleKey, RuntimeFixture,
     root.param("device", device);
     root.emplaceShared<Cpu, Device>("cpu");
     root.emplaceShared<Gpu, Device>("gpu");
+    root.focus<Device>();
     REQUIRE(nodes.exports.find(fixture.root, "deviceFocus") != InvalidExportId);
 }
 

@@ -285,6 +285,15 @@ public:
         return resolution.candidates;
     }
 
+    /// The param that chooses among an ambiguous entry's candidates, if there is one.
+    Lattice::ExportId choice(const Lattice::VisibleExport& entry) const {
+        const Lattice::ContextResolution resolution =
+            entry.scope == Lattice::InvalidContextScopeId
+                ? nodeSystem_->context.resolveInfo(entry.role)
+                : nodeSystem_->context.resolveInfo(entry.scope, entry.role);
+        return nodeSystem_->choices.param(resolution.source, entry.role);
+    }
+
 private:
     Lattice::ResolvedExport resolveOwner(
         Lattice::RoleId role,
