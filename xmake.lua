@@ -38,6 +38,8 @@ target("Lattice")
 
     add_files("kernel/**.cpp")
     add_deps("lattice-logger", "lattice-sysinfo", {public = true})
+    -- Finds its shared deps beside itself: Ubuntu links with --as-needed, so a binary may not list them.
+    add_rpathdirs("@loader_path")
 
     add_headerfiles("Lattice.hpp", "Composition.hpp", {prefixdir = "Lattice"})
     add_headerfiles("kernel/(**.hpp)", {prefixdir = "Lattice/kernel"})

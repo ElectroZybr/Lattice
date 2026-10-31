@@ -15,6 +15,8 @@ target("lbm-runner")
     add_includedirs(".", {public = true})
     add_packages("indicators")
     add_deps("lattice-logger", "lattice-sysinfo", {public = true})
+    -- Finds its shared deps beside itself: Ubuntu links with --as-needed, so a binary may not list them.
+    add_rpathdirs("@loader_path")
     if is_plat("linux") then
         add_syslinks("pthread", {public = true})
     end

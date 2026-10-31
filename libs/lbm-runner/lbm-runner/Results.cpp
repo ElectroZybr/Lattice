@@ -8,6 +8,7 @@
 #include <tuple>
 #include <variant>
 
+#include <lattice-tools/Charconv.hpp>
 #include <lattice-tools/Exception.hpp>
 
 namespace Lattice::Benchmarks {
@@ -59,7 +60,7 @@ double parseNumber(std::string_view text, size_t line) {
     if (text == "-inf")
         return -INFINITY;
     double value = 0;
-    const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
+    const auto [end, error] = Lattice::fromChars(text.data(), text.data() + text.size(), value);
     if (error != std::errc{} || end != text.data() + text.size())
         throw Error("line {}: '{}' is not a number", line, text);
     return value;
@@ -304,7 +305,7 @@ std::string rowKey(const ResultRow& row) {
 void sortRows(std::vector<ResultRow>& rows) {
     auto numeric = [](const std::string& n) {
         double value = 0;
-        const auto [end, error] = std::from_chars(n.data(), n.data() + n.size(), value);
+        const auto [end, error] = Lattice::fromChars(n.data(), n.data() + n.size(), value);
         return error == std::errc{} && end == n.data() + n.size() ? value : INFINITY;
     };
     std::ranges::stable_sort(rows, [&](const ResultRow& a, const ResultRow& b) {

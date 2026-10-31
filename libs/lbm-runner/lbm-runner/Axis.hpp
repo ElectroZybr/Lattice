@@ -13,6 +13,7 @@
 
 #include <lbm-runner/Analysis.hpp>
 #include <lbm-runner/Visibility.hpp>
+#include <lattice-tools/Charconv.hpp>
 #include <lattice-tools/Exception.hpp>
 
 namespace Lattice::Benchmarks {
@@ -74,7 +75,7 @@ typename A::Value parse(std::string_view text) {
     else {
         static_assert(std::is_arithmetic_v<Value>, "an enum axis needs text(v) and parse(text)");
         Value value{};
-        const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
+        const auto [end, error] = Lattice::fromChars(text.data(), text.data() + text.size(), value);
         if (error != std::errc{} || end != text.data() + text.size())
             throw Exception<AxisValue>("axis '{}': '{}' is not a value", A::name, text);
         return value;

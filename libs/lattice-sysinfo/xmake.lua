@@ -7,6 +7,8 @@ target("lattice-sysinfo")
     add_headerfiles("(lattice-sysinfo/*.hpp)")
     add_includedirs(".", {public = true})
     add_deps("lattice-logger", {public = true})
+    -- Finds its shared deps beside itself: Ubuntu links with --as-needed, so a binary may not list them.
+    add_rpathdirs("@loader_path")
     if is_plat("linux") then
         add_syslinks("pthread", {public = true})
     elseif is_plat("windows", "mingw") then

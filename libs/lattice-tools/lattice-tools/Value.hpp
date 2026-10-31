@@ -13,6 +13,8 @@
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
 
+#include <lattice-tools/Charconv.hpp>
+
 namespace Lattice {
 
 /// A float as it reads: 0.01f is 0.01, not the 0.009999999776482582 of its double.
@@ -20,7 +22,7 @@ inline double shortest(float value) {
     char text[32];
     const auto end = std::to_chars(text, text + sizeof text, value).ptr;
     double result = 0;
-    std::from_chars(text, end, result);
+    fromChars(text, end, result);
     return result;
 }
 

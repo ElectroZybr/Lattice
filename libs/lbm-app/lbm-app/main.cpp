@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 
+#include <lattice-tools/Charconv.hpp>
 #include <lbm-history/Git.hpp>
 #include <lbm-history/Machine.hpp>
 #include <lbm-history/Process.hpp>
@@ -386,7 +387,7 @@ void printTable(const std::vector<std::string>& header, const std::vector<std::v
 /// 1000 → 1K, 1000000 → 1M, 1500 → 1.5K.
 std::string compactN(std::string_view n) {
     double value = 0;
-    if (std::from_chars(n.data(), n.data() + n.size(), value).ec != std::errc{})
+    if (Lattice::fromChars(n.data(), n.data() + n.size(), value).ec != std::errc{})
         return std::string(n);
     for (const auto& [scale, suffix] : {std::pair{1e9, "G"}, {1e6, "M"}, {1e3, "K"}})
         if (value >= scale)
