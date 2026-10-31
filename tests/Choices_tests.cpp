@@ -95,6 +95,26 @@ TEST(Choices_WriteWakesObservers, RuntimeFixture,
     REQUIRE(probe->changes == 1 && focus->kind() == 1);
 }
 
+struct Question { std::string answer; };
+
+TEST(Choices_AwaitedParamIsPendingUntilAnswered, RuntimeFixture,
+    "Параметр с `awaits()` — такой же ожидающий выбор: виден в `pending()` до первой принятой записи.") {
+    auto& nodes = fixture.run_ctx.nodes;
+    auto root = fixture.build(fixture.root);
+    auto question = root.emplace<Question>("question");
+    const ExportId answer = question.param("answer", &Question::answer).choices({"no", "yes"}).awaits();
+    const auto asked = [&] {
+        for (const auto& choice : nodes.choices.pending())
+            if (choice.param == answer) return choice.options == std::vector<std::string>{"no", "yes"};
+        return false;
+    };
+    REQUIRE(asked(), "listed with its choices");
+    REQUIRE(!nodes.exports.set(answer, std::string{"maybe"}));
+    REQUIRE(asked(), "a refused value answers nothing");
+    REQUIRE(nodes.exports.set(answer, std::string{"yes"}));
+    REQUIRE(!asked() && question->answer == "yes", "answered by the write");
+}
+
 TEST(Choices_NameTakenFallsBackToRoleKey, RuntimeFixture,
     "Имя `device` занято экспортом владельца — выбор называется `deviceFocus`.") {
     auto& nodes = fixture.run_ctx.nodes;

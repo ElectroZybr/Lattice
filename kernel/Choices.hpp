@@ -29,9 +29,9 @@ public:
     std::vector<std::string> options;
 };
 
-/// A choice a pending branch waits for, as tools show it.
+/// A choice something waits for, as tools show it: a pending branch, or a param that asks.
 struct PendingChoice {
-    NodeId branch = InvalidNodeId;
+    NodeId branch = InvalidNodeId;   // the branch, or the param's owner
     ExportId param = InvalidExportId;   // write it to make the choice
     std::string name;
     std::vector<std::string> options;
@@ -142,7 +142,7 @@ public:
     /// The outermost composition of `branch` needed a choice: wait for it. `relative` is
     /// relativeName() taken before the branch was cleared.
     void defer(NodeId branch, BlueprintId implementation, const ChoiceRequired& required, std::string relative);
-    /// Choices pending branches wait for.
+    /// Choices pending branches wait for, then params that await an answer (ParamBuild::awaits).
     std::vector<PendingChoice> pending() const;
     /// `Graphics::Device` → `device`.
     static std::string choiceName(std::string_view role);

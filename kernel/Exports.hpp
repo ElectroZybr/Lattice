@@ -13,6 +13,7 @@
 #include <string_view>
 #include <type_traits>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -437,6 +438,8 @@ class Exports {
     std::vector<Param> params_;
     std::vector<Action> actions_;
     std::unordered_map<ExportId, std::unique_ptr<ParamState>> states_;
+    /// Params that ask a question: pending until a value is written.
+    std::unordered_set<ExportId> awaiting_;
     std::unordered_map<NodeId, std::unique_ptr<Executor>> executors_;
 
     const Executor* executor(NodeId owner) const {
@@ -666,6 +669,15 @@ public:
         return typed;
     }
 
+    /// A param asks a question: pending choices list it until a value is written.
+    void await(ExportId id) {
+        writable(id);
+        awaiting_.insert(id);
+    }
+
+    /// Params still waiting for an answer.
+    std::vector<ExportId> awaiting() const { return {awaiting_.begin(), awaiting_.end()}; }
+
     /// Rules of a param for tools; empty when it has none.
     ParamRules rules(ExportId id) const {
         const auto it = states_.find(id);
@@ -768,7 +780,9 @@ public:
     [[gnu::no_stack_protector]] ParamResult set(ExportId id, const Value& value) {
         const Param& param = writable(id);
         ParamResult result = param.set(param.object, value);
-        if (result) notify(id, ParamChange::Set);
+        if (!result) return result;
+        awaiting_.erase(id);
+        notify(id, ParamChange::Set);
         return result;
     }
 
@@ -833,6 +847,7 @@ public:
         if (parameter) params_[exports_[id].slot] = {};
         else actions_[exports_[id].slot] = {};
         states_.erase(id);
+        awaiting_.erase(id);
         if (parameter) notify(id, ParamChange::Remove);
     }
 
@@ -856,6 +871,7 @@ public:
                 continue;
 
             const bool parameter = exports_[id].kind == ExportKind::Param;
+            awaiting_.erase(id);
             exports_[id].owner = InvalidNodeId;
             if (parameter) params_[exports_[id].slot] = {};
             else actions_[exports_[id].slot] = {};
@@ -1007,6 +1023,12 @@ public:
         if (values.empty())
             throw Exception<ParamBuild>("No choices for export #{}", id_);
         typed().choices = std::move(values);
+        return *this;
+    }
+
+    /// A question with these choices: pending choices list it until it is answered by a write.
+    ParamBuild& awaits() {
+        exports_->await(id_);
         return *this;
     }
 

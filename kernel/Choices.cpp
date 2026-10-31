@@ -347,6 +347,14 @@ std::vector<PendingChoice> Choices::pending() const {
     for (const auto& entry : pending_)
         if (nodes_.registry.get(entry->branch) && nodes_.registry.generation(entry->branch) == entry->generation)
             result.push_back(entry->choice);
+    // Questions of objects: the same choices, answered the same way.
+    for (const auto id : nodes_.exports.awaiting()) {
+        const auto* entry = nodes_.exports.get(id);
+        if (!entry) continue;
+        PendingChoice question{entry->owner, id, entry->name, {}};
+        for (const auto& option : nodes_.exports.rules(id).choices) question.options.push_back(option.toString());
+        result.push_back(std::move(question));
+    }
     return result;
 }
 

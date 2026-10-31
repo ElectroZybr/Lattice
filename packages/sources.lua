@@ -1,5 +1,6 @@
 -- Where a recipe takes its sources: a repository added by path is a working copy and builds as it is;
--- one added by git URL downloads the release archive of the requested version.
+-- one added by git URL downloads the release archive of the requested version, or clones a branch
+-- or a commit of the repository.
 
 -- A new release: its tag here with the sha256 of https://github.com/ElectroZybr/Lattice/archive/refs/tags/v<version>.tar.gz
 local versions = {
@@ -12,7 +13,9 @@ function main(package)
         package:set("sourcedir", path.join(package:scriptdir(), "../../.."))
         return
     end
+    -- A release is its archive; a branch or a commit (`main`, a hash) comes from git.
     package:add("urls", "https://github.com/ElectroZybr/Lattice/archive/refs/tags/v$(version).tar.gz")
+    package:add("urls", "https://github.com/ElectroZybr/Lattice.git")
     for version, sha256 in pairs(versions) do
         package:add("versions", version, sha256)
     end
