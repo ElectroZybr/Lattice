@@ -15,8 +15,6 @@ jobs:
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    # macOS is not verified yet: its result is shown, it does not fail the run.
-    continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
@@ -25,17 +23,14 @@ jobs:
             os: ubuntu-24.04
             config: --toolchain=gcc-14
             packages: ~/.xmake/packages
-            experimental: false
           - name: Windows (clang-cl)
             os: windows-2025
             config: --toolchain=clang-cl
             packages: ~/AppData/Local/.xmake/packages
-            experimental: false
           - name: macOS (clang)
             os: macos-15
             config: --toolchain=clang
             packages: ~/.xmake/packages
-            experimental: true
     steps:
       - uses: actions/checkout@v5
 
