@@ -27,6 +27,8 @@ TEST(Blueprints_AnonymousNamespace, BlueprintsFixture,
     REQUIRE(shortName("Lattice::(anonymous namespace)::View") == "View");
     REQUIRE(shortName("Lattice::{anonymous}::View") == "View");
     REQUIRE(shortName("Lattice::Holder<Lattice::(anonymous namespace)::View>") == "Holder<View>");
+    const auto view = fixture.blueprints.add("Lattice::(anonymous namespace)::View");
+    REQUIRE(fixture.blueprints.require(view).shortName() == "View", "a type of an anonymous namespace registers");
 }
 
 TEST(Blueprints_Namespaces, BlueprintsFixture) {

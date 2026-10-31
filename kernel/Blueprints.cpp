@@ -330,7 +330,8 @@ void Blueprints::validateName(std::string_view name) {
 
         const std::string_view part = name.substr(begin, end - begin);
 
-        if (part.empty() || part.find_first_of(": \t\r\n") != std::string_view::npos)
+        // clang names an anonymous namespace with a space: one part, like GCC's "{anonymous}".
+        if (part.empty() || (part != "(anonymous namespace)" && part.find_first_of(": \t\r\n") != std::string_view::npos))
             throw Exception<Blueprints>("Invalid qualified name '{}'", name);
 
         if (end == name.size())

@@ -175,7 +175,7 @@ public:
         else
             Logger::exception(tag, "Unhandled exception: {}", error.what());
         Logger::message("<err>Critical error. Application terminated.</>");
-        Logger::message("Crash log: {}", std::string(LogSystem::getPath()));
+        Logger::message("Crash log: {}", LogSystem::getPath().string());
         Logger::message("<err>~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</>\n");
     }
 
