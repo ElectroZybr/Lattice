@@ -10,9 +10,16 @@
 
 #include <lattice-tools/TypeName.hpp>
 
+// One typeinfo across libraries: Apple libc++ compares a caught type by address, and hidden ones differ.
+#if !defined(_WIN32) && (defined(__GNUC__) || defined(__clang__))
+    #define LATTICE_EXCEPTION_VISIBLE __attribute__((visibility("default")))
+#else
+    #define LATTICE_EXCEPTION_VISIBLE
+#endif
+
 namespace Lattice {
 
-class ExceptionBase : public std::runtime_error {
+class LATTICE_EXCEPTION_VISIBLE ExceptionBase : public std::runtime_error {
 public:
     ExceptionBase(
         std::string_view tag,
@@ -59,7 +66,7 @@ private:
 };
 
 template<typename Owner>
-class Exception final : public ExceptionBase {
+class LATTICE_EXCEPTION_VISIBLE Exception final : public ExceptionBase {
 public:
     template<typename... TArgs>
     Exception(

@@ -237,7 +237,8 @@ TEST(Trace_DecomposesAsyncWork, Fixture,
     REQUIRE(transfer > 0 && rate > 0);
     REQUIRE(std::abs(rate - double(TransferBytes) * 1e9 / transfer) < rate * 1e-6);
     // Фазы хоста покрывают почти всю стену; исполнитель из стены не вычитается.
-    REQUIRE(wall >= prepare + transfer + complete);
+    // Метрики — медианы по итерациям: сумма медиан фаз может чуть превысить медиану стены.
+    REQUIRE(wall >= (prepare + transfer + complete) * 0.95);
     REQUIRE(unaccounted >= 0 && unaccounted < wall * 0.1);
 
     Benchmarks::run("TraceUntraced");
