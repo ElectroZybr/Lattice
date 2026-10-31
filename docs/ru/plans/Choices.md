@@ -57,6 +57,7 @@ root.emplace<Viewport>("viewport", renderer.ref());          // ChoiceRequired, 
 - [x] Старые `slot.choice(name, compose)` и `choice(BlueprintId)` удалены; тесты, пример, Graphics и Shell переведены
 - [x] Тесты: каталог, одна реализация заполняет слот в конце композиции, две — пустой слот, выбор и замена из параметра, новая реализация не меняет выбор, отказ на чужом имени
 - [x] Ребёнок из реализации (`Builder::add`) — узел типа API, реализация — его `choice`: в дереве, путях `Тип:имя` и проверке имени не отличается от `emplace` в `compose`; `Node::composition()`/`implementation()`, Serializer пишет реализацию (2026-10-31)
+- [x] `root.compose("Пакет::Имя", name)` собирает и реализацию каталога — в `compose` тем же узлом, что `Builder::add` позже (2026-10-31)
 
 ## Ленивое требование выбора
 

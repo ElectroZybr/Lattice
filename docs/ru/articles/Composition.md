@@ -236,8 +236,9 @@ verlet.param("dt", &Verlet::dt);          // обычный параметр
 ```cpp
 // Lamp — API реализации и сам объект
 root.emplace<Lamp>("desk");                                         // в compose
+root.compose("Room::Lamp", "hall");                                 // в compose — реализацией
 runtime.builder.add(root.id(), blueprints.resolve("Room::Lamp"), "floor"); // в любое время
-// tree: Lamp::desk, Lamp::floor; второе "desk" из реализации — отказ: имя занято
+// tree: Lamp::desk, Lamp::hall, Lamp::floor; второе "desk" из реализации — отказ: имя занято
 ```
 
 ## Пересборка: явная последовательность

@@ -514,12 +514,14 @@ public:
         return object;
     }
 
-    /// Nest another package's composition (registered by its id) as a child branch.
+    /// Nest another package's composition (registered by its id) or an implementation from the
+    /// catalog (`Package::Name`) as a child branch: the same node `Builder::add` builds later.
     /// A failure rolls back together with the enclosing composition.
     Lattice::NodeId compose(std::string_view composition, std::string_view instance = Lattice::DefaultInstanceName) {
         check();
         const auto type = nodeSystem_.blueprints.resolve(composition);
-        if (type == Lattice::InvalidBlueprintId || !nodeSystem_.blueprints.require(type).meta.compose)
+        if (type == Lattice::InvalidBlueprintId ||
+            (!nodeSystem_.blueprints.require(type).meta.compose && !nodeSystem_.blueprints.require(type).meta.composeSlot))
             throw Lattice::Exception<NodeBuild>("Unknown composition '{}'", composition);
         return nodeSystem_.factory.component(id_, type, instance);
     }

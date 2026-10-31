@@ -165,6 +165,18 @@ TEST(Choices_ImplementationChildIsLikeEmplaced, RuntimeFixture,
     REQUIRE(refused, "a name taken by an emplaced node of the type is taken for the implementation too");
 }
 
+TEST(Choices_ImplementationComposedInCompose, RuntimeFixture,
+    "Реализация каталога собирается и внутри compose (`root.compose`) — тем же узлом, что Builder::add позже.") {
+    auto& nodes = fixture.run_ctx.nodes;
+    const auto lamp = nodes.blueprints.addImplementation(implementation<Lamp, composeLamp>("Lamp"), "Hall");
+    const auto room = nodes.blueprints.addComposition("Hall", +[](NodeBuild root) { root.compose("Hall::Lamp", "desk"); });
+    const auto branch = nodes.builder.add(fixture.root, room, "hall");
+    const auto desk = nodes.registry.find("desk", branch, nodes.blueprints.id<Lamp>());
+    REQUIRE(desk != InvalidNodeId && nodes.registry.require(desk).choice == lamp, "a node of the type, built by the implementation");
+    const auto floor = nodes.builder.add(branch, lamp, "floor");
+    REQUIRE(nodes.registry.require(floor).bp == nodes.registry.require(desk).bp, "the same as one added later");
+}
+
 TEST(Choices_SlotWithOneImplementationFillsItself, RuntimeFixture,
     "Одна реализация API заполняет слот в конце композиции; новая реализация выбор не меняет.") {
     auto& nodes = fixture.run_ctx.nodes;
