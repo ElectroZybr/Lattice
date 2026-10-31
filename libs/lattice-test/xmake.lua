@@ -1,7 +1,7 @@
 -- Registry, assertions and results: no console, no runtime.
 target("lattice-test")
     set_kind("shared")
-    set_version("0.1.0", {soname = true})
+    set_version("1.0.0", {soname = true})
     set_symbols("hidden")
     add_defines("LATTICE_TEST_BUILDING_LIBRARY")
     add_files("lattice-test/*.cpp")

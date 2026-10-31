@@ -1,6 +1,6 @@
 target("lattice-logger")
     set_kind("shared")
-    set_version("0.1.0", {soname = true})
+    set_version("1.0.0", {soname = true})
     set_symbols("hidden")
     add_defines("LOGGER_BUILDING_LIBRARY")
     add_files("lattice-logger/**.cpp")

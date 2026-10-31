@@ -1,0 +1,36 @@
+# A tag v<version> is a release: the version of every library is checked against it, the CI runs,
+# and the GitHub Release is written from the commits. Consumers build the package from the tag.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Versions match the tag
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          wrong=$(grep -rnoE 'set_version\("[^"]+"' --include=xmake.lua . | grep -v "set_version(\"$tag\"" || true)
+          if [ -n "$wrong" ]; then
+            echo "::error::versions other than $tag:"; echo "$wrong"; exit 1
+          fi
+
+  ci:
+    needs: version
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: ci
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true

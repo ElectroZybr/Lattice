@@ -1,0 +1,63 @@
+# Build and tests on every OS the core supports. Runners have no GPU: GPU checks skip themselves.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    # macOS is not verified yet: its result is shown, it does not fail the run.
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux (gcc)
+            os: ubuntu-24.04
+            config: --toolchain=gcc-14
+            packages: ~/.xmake/packages
+            experimental: false
+          - name: Windows (clang-cl)
+            os: windows-2025
+            config: --toolchain=clang-cl
+            packages: ~/AppData/Local/.xmake/packages
+            experimental: false
+          - name: macOS (clang)
+            os: macos-15
+            config: --toolchain=clang
+            packages: ~/.xmake/packages
+            experimental: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: "3.1.1"
+          # The compile cache between runs: a rebuild costs seconds, not minutes.
+          build-cache: true
+          build-cache-key: ${{ matrix.os }}-release
+
+      - name: Package cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ matrix.packages }}
+          key: packages-${{ matrix.os }}-${{ hashFiles('xmake-requires.lock') }}
+          restore-keys: packages-${{ matrix.os }}-
+
+      - name: Configure
+        run: xmake f -y -m release ${{ matrix.config }}
+
+      - name: Build
+        run: xmake build -y
+
+      - name: Tests
+        run: xmake run -w "${{ github.workspace }}" ltest run

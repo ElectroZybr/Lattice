@@ -1,4 +1,6 @@
 set_project("Lattice")
+-- The release: every library of the repository has this version (soname), the tag is v<version>.
+set_version("1.0.0")
 set_xmakever("2.8.6")
 set_languages("c++23")
 set_policy("package.requires_lock", true)
@@ -30,7 +32,7 @@ end
 
 target("Lattice")
     set_kind("shared")
-    set_version("0.1.0", {soname = true})
+    set_version("1.0.0", {soname = true})
     set_symbols("hidden")
     add_defines("LATTICE_BUILDING_LIBRARY")
 

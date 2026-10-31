@@ -2,7 +2,7 @@ add_requires("indicators 2.3")
 
 target("lbm-runner")
     set_kind("shared")
-    set_version("0.1.0", {soname = true})
+    set_version("1.0.0", {soname = true})
     set_symbols("hidden")
     add_defines("BMRUNNER_BUILDING_LIBRARY")
     add_files("lbm-runner/**.cpp|Metrics/platform/*.cpp")

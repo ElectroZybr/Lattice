@@ -1,6 +1,6 @@
 target("lattice-sysinfo")
     set_kind("shared")
-    set_version("0.1.0", {soname = true})
+    set_version("1.0.0", {soname = true})
     set_symbols("hidden")
     add_defines("SYSINFO_BUILDING_LIBRARY")
     add_files("lattice-sysinfo/**.cpp")
