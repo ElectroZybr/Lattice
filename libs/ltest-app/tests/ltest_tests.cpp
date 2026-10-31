@@ -77,15 +77,14 @@ TEST(Suites_CrashTimeoutAndLaunchErrors, Directory) {
 }
 
 TEST(Suites_VerboseStreamsBeforeCompletion, Directory) {
-    // Запас на холодный старт: на macOS CI загрузка бинарника с dylib бывает дольше 400 мс.
     const auto begin = std::chrono::steady_clock::now();
     bool early = false;
     std::string live;
-    T::SuiteOptions options{.filter = "Probe_Timeout", .verbose = true, .timeout = std::chrono::milliseconds(2000)};
+    T::SuiteOptions options{.filter = "Probe_Timeout", .verbose = true, .timeout = std::chrono::milliseconds(500)};
     options.output = [&](std::string_view chunk) {
         live += chunk;
         if (live.find("Probe_Timeout") != std::string::npos &&
-            std::chrono::steady_clock::now() - begin < std::chrono::milliseconds(1500)) early = true;
+            std::chrono::steady_clock::now() - begin < std::chrono::milliseconds(400)) early = true;
     };
     const auto result = T::runSuite(probe(fixture.path), options);
     REQUIRE(result.exitCode == 124);

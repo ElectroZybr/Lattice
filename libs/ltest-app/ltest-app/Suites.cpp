@@ -50,15 +50,17 @@ Process process(const std::string& binary, const std::vector<std::string>& argum
                 const fs::path& directory, const fs::path& log, std::chrono::milliseconds timeout,
                 const std::function<void(std::string_view)>& output = {}) {
     if (timeout.count() <= 0) throw Error("timeout must be positive");
-    std::ifstream live;
+    // Reopened on every poll: libc++ reads through FILE*, whose end of file stays set on macOS.
+    std::streamoff offset = 0;
     auto forward = [&] {
         if (!output) return;
-        if (!live.is_open()) live.open(log, std::ios::binary);
-        if (!live.is_open()) return;
-        live.clear();
+        std::ifstream live(log, std::ios::binary);
+        if (!live.is_open() || !live.seekg(offset)) return;
         char buffer[8192];
-        while (live.read(buffer, sizeof buffer) || live.gcount())
+        while (live.read(buffer, sizeof buffer) || live.gcount()) {
+            offset += live.gcount();
             output(std::string_view(buffer, size_t(live.gcount())));
+        }
     };
     return Platform::run(binary, arguments, directory, log, timeout, forward);
 }
