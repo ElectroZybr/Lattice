@@ -101,11 +101,11 @@ struct ParamFixture : Fixture {
 
     explicit ParamFixture(size_t n) : n(n) {
         auto root = runtime.build(runtime.root);
-        auto owner = root.emplace<Owner>("owner");
+        auto owner = root.template emplace<Owner>("owner");
         if constexpr (R == Route::Inline)
-            owner.executeOn(root.emplace<InlineQueue>("queue"));
+            owner.executeOn(root.template emplace<InlineQueue>("queue"));
         if constexpr (R == Route::Thread) {
-            auto queue = root.emplace<ThreadQueue>("queue");
+            auto queue = root.template emplace<ThreadQueue>("queue");
             thread = queue.get();
             owner.executeOn(queue);
         }
