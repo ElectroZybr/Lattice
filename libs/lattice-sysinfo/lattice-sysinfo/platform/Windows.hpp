@@ -11,14 +11,23 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <windows.h>
+#include <cfgmgr32.h>
+#include <devpropdef.h>
 #include <dxgi.h>
+#include <iphlpapi.h>
 #include <powrprof.h>
+#include <setupapi.h>
 
 #include <algorithm>
+#include <charconv>
 #include <cstddef>
 #include <filesystem>
 #include <format>
+#include <limits>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -205,6 +214,65 @@ inline MemoryInfo memory() {
     return info;
 }
 
+namespace Windows {
+
+// {3AB22E31-...}: DEVPKEY_PciDevice_*; pciprop.h is not in the plain SDK.
+inline std::optional<uint32_t> pciProperty(DEVINST node, ULONG id) {
+    const DEVPROPKEY key{{0x3AB22E31, 0x8264, 0x4B4E, {0x9A, 0xF5, 0xA8, 0xD2, 0xD8, 0xE3, 0x3E, 0x62}}, id};
+    DEVPROPTYPE type = 0;
+    uint32_t value = 0;
+    ULONG size = sizeof value;
+    if (CM_Get_DevNode_PropertyW(node, &key, &type, reinterpret_cast<PBYTE>(&value), &size, 0) != CR_SUCCESS ||
+        type != DEVPROP_TYPE_UINT32)
+        return std::nullopt;
+    return value;
+}
+
+inline uint32_t hexAfter(const std::string& text, std::string_view label) {
+    const size_t at = text.find(label);
+    if (at == std::string::npos)
+        return 0;
+    uint32_t value = 0;
+    const char* begin = text.data() + at + label.size();
+    std::from_chars(begin, text.data() + text.size(), value, 16);
+    return value;
+}
+
+// The display devices on PCI, by their ids. The speed is the most the device can; the width in
+// use, since a laptop wires an x16 chip with fewer lanes and the port above tells nothing.
+inline void readPcie(GpuInfo& gpu) {
+    // GUID_DEVCLASS_DISPLAY
+    static const GUID display{0x4D36E968, 0xE325, 0x11CE, {0xBF, 0xC1, 0x08, 0x00, 0x2B, 0xE1, 0x03, 0x18}};
+    const HDEVINFO devices = SetupDiGetClassDevsW(&display, nullptr, nullptr, DIGCF_PRESENT);
+    if (devices == INVALID_HANDLE_VALUE)
+        return;
+    SP_DEVINFO_DATA device{.cbSize = sizeof(SP_DEVINFO_DATA)};
+    for (DWORD index = 0; SetupDiEnumDeviceInfo(devices, index, &device); ++index) {
+        wchar_t id[512]{};
+        if (!SetupDiGetDeviceInstanceIdW(devices, &device, id, DWORD(std::size(id)), nullptr))
+            continue;
+        const std::string text = narrow(id);
+        if (!text.starts_with("PCI\\") || hexAfter(text, "VEN_") != gpu.vendorId || hexAfter(text, "DEV_") != gpu.deviceId)
+            continue;
+        const auto generation = pciProperty(device.DevInst, 11);
+        const auto lanes = pciProperty(device.DevInst, 10);
+        if (generation && lanes && *generation && *lanes)
+            gpu.pcie = PcieLink{*generation, *lanes};
+        break;
+    }
+    SetupDiDestroyDeviceInfoList(devices);
+}
+
+inline void useWinsock() {
+    static const bool started = [] {
+        WSADATA data{};
+        return WSAStartup(MAKEWORD(2, 2), &data) == 0;
+    }();
+    (void)started;
+}
+
+}
+
 inline std::vector<GpuInfo> gpus() {
     using namespace Windows;
     std::vector<GpuInfo> result;
@@ -214,12 +282,100 @@ inline std::vector<GpuInfo> gpus() {
     IDXGIAdapter1* adapter = nullptr;
     for (UINT index = 0; factory->EnumAdapters1(index, &adapter) != DXGI_ERROR_NOT_FOUND; ++index) {
         DXGI_ADAPTER_DESC1 desc{};
-        if (SUCCEEDED(adapter->GetDesc1(&desc)) && !(desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE))
-            result.push_back({.name = narrow(desc.Description), .vramBytes = desc.DedicatedVideoMemory});
+        if (SUCCEEDED(adapter->GetDesc1(&desc)) && !(desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)) {
+            GpuInfo gpu{.name = narrow(desc.Description),
+                        .vramBytes = desc.DedicatedVideoMemory,
+                        .vendorId = desc.VendorId,
+                        .deviceId = desc.DeviceId};
+            readPcie(gpu);
+            result.push_back(std::move(gpu));
+        }
         adapter->Release();
     }
     factory->Release();
     return result;
+}
+
+inline std::vector<NetworkInfo> networks() {
+    using namespace Windows;
+    std::vector<NetworkInfo> result;
+    const ULONG flags = GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER;
+    ULONG size = 32 * 1024;
+    std::vector<std::byte> buffer(size);
+    auto* adapters = reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buffer.data());
+    ULONG status = GetAdaptersAddresses(AF_UNSPEC, flags, nullptr, adapters, &size);
+    if (status == ERROR_BUFFER_OVERFLOW) {
+        buffer.resize(size);
+        adapters = reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buffer.data());
+        status = GetAdaptersAddresses(AF_UNSPEC, flags, nullptr, adapters, &size);
+    }
+    if (status != NO_ERROR)
+        return result;
+    for (const auto* adapter = adapters; adapter; adapter = adapter->Next) {
+        NetworkInfo network{.name = narrow(adapter->FriendlyName), .up = adapter->OperStatus == IfOperStatusUp};
+        MIB_IF_ROW2 row{};
+        row.InterfaceLuid = adapter->Luid;
+        const bool hardware = GetIfEntry2(&row) == NO_ERROR && row.InterfaceAndOperStatusFlags.HardwareInterface;
+        if (adapter->IfType == IF_TYPE_SOFTWARE_LOOPBACK)
+            network.kind = NetworkKind::Loopback;
+        else if (!hardware)
+            network.kind = NetworkKind::Virtual;
+        else if (adapter->IfType == IF_TYPE_IEEE80211)
+            network.kind = NetworkKind::Wireless;
+        else if (adapter->IfType == IF_TYPE_ETHERNET_CSMACD)
+            network.kind = NetworkKind::Ethernet;
+        const ULONG64 speed = adapter->TransmitLinkSpeed;
+        if (speed > 0 && speed != std::numeric_limits<ULONG64>::max() && hardware &&
+            adapter->IfType != IF_TYPE_SOFTWARE_LOOPBACK)
+            network.megabits = speed / 1'000'000;
+        for (const auto* unicast = adapter->FirstUnicastAddress; unicast; unicast = unicast->Next) {
+            const sockaddr* address = unicast->Address.lpSockaddr;
+            char text[INET6_ADDRSTRLEN]{};
+            const void* source = address->sa_family == AF_INET
+                ? static_cast<const void*>(&reinterpret_cast<const sockaddr_in*>(address)->sin_addr)
+                : static_cast<const void*>(&reinterpret_cast<const sockaddr_in6*>(address)->sin6_addr);
+            if (inet_ntop(address->sa_family, source, text, sizeof text))
+                network.addresses.emplace_back(text);
+        }
+        result.push_back(std::move(network));
+    }
+    return result;
+}
+
+inline std::optional<std::string> localAddressTo(const std::string& address) {
+    using namespace Windows;
+    useWinsock();
+    sockaddr_storage target{};
+    int size = sizeof(sockaddr_in);
+    auto* v4 = reinterpret_cast<sockaddr_in*>(&target);
+    auto* v6 = reinterpret_cast<sockaddr_in6*>(&target);
+    if (inet_pton(AF_INET, address.c_str(), &v4->sin_addr) == 1) {
+        v4->sin_family = AF_INET;
+        v4->sin_port = htons(9);
+    } else if (inet_pton(AF_INET6, address.c_str(), &v6->sin6_addr) == 1) {
+        v6->sin6_family = AF_INET6;
+        v6->sin6_port = htons(9);
+        size = sizeof(sockaddr_in6);
+    } else {
+        return std::nullopt;
+    }
+    const SOCKET handle = socket(target.ss_family, SOCK_DGRAM, 0);
+    if (handle == INVALID_SOCKET)
+        return std::nullopt;
+    sockaddr_storage local{};
+    int localSize = sizeof local;
+    const bool routed = connect(handle, reinterpret_cast<sockaddr*>(&target), size) == 0 &&
+        getsockname(handle, reinterpret_cast<sockaddr*>(&local), &localSize) == 0;
+    closesocket(handle);
+    if (!routed)
+        return std::nullopt;
+    char text[INET6_ADDRSTRLEN]{};
+    const void* source = local.ss_family == AF_INET
+        ? static_cast<const void*>(&reinterpret_cast<sockaddr_in*>(&local)->sin_addr)
+        : static_cast<const void*>(&reinterpret_cast<sockaddr_in6*>(&local)->sin6_addr);
+    if (!inet_ntop(local.ss_family, source, text, sizeof text))
+        return std::nullopt;
+    return std::string{text};
 }
 
 inline OsInfo os() {

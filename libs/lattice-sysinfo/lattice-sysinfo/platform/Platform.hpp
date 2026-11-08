@@ -1,6 +1,6 @@
 #pragma once
 
-// The adapter of this OS: processors(), memory(), gpus(), os(), executable() in
+// The adapter of this OS: processors(), memory(), gpus(), networks(), localAddressTo(), os(), executable() in
 // Lattice::SystemInfo::Platform. The only place with OS macros; included only from Collect.cpp,
 // since adapters pull system headers.
 

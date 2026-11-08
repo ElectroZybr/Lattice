@@ -6,13 +6,21 @@
 #include <charconv>
 #include <filesystem>
 #include <fstream>
+#include <cstdlib>
 #include <map>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include <arpa/inet.h>
+#include <ifaddrs.h>
+#include <net/if_arp.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 #include <sys/utsname.h>
+#include <unistd.h>
 
 #include "../SystemInfo.hpp"
 
@@ -211,6 +219,72 @@ inline void enrichNvidia(GpuInfo& gpu) {
     }
 }
 
+inline uint32_t readHex(const fs::path& path) {
+    const std::string value = readText(path);
+    uint32_t result = 0;
+    if (!value.starts_with("0x"))
+        return 0;
+    const auto [_, ec] = std::from_chars(value.data() + 2, value.data() + value.size(), result, 16);
+    return ec == std::errc{} ? result : 0;
+}
+
+inline std::optional<PcieLink> readPcieLink(const fs::path& device) {
+    const std::string speed = readText(device / "max_link_speed");
+    const uint64_t lanes = readUint(device / "max_link_width");
+    const double rate = std::strtod(speed.c_str(), nullptr);
+    if (rate <= 0 || lanes == 0)
+        return std::nullopt;
+    uint32_t generation = 1;
+    for (const double limit : {3.0, 6.0, 10.0, 20.0, 40.0})
+        generation += rate > limit;
+    return PcieLink{generation, static_cast<uint32_t>(lanes)};
+}
+
+// The device and the port above it: a card in a slower or narrower slot gets what the slot gives.
+inline std::optional<PcieLink> pcieLink(const fs::path& device) {
+    auto link = readPcieLink(device);
+    if (const auto port = readPcieLink(device.parent_path()); link && port) {
+        link->generation = std::min(link->generation, port->generation);
+        link->lanes = std::min(link->lanes, port->lanes);
+    }
+    return link;
+}
+
+inline std::map<std::string, std::vector<std::string>> interfaceAddresses() {
+    std::map<std::string, std::vector<std::string>> result;
+    ifaddrs* list = nullptr;
+    if (getifaddrs(&list) != 0)
+        return result;
+    for (const ifaddrs* entry = list; entry; entry = entry->ifa_next) {
+        if (!entry->ifa_addr)
+            continue;
+        char text[INET6_ADDRSTRLEN]{};
+        const void* address = nullptr;
+        if (entry->ifa_addr->sa_family == AF_INET)
+            address = &reinterpret_cast<const sockaddr_in*>(entry->ifa_addr)->sin_addr;
+        else if (entry->ifa_addr->sa_family == AF_INET6)
+            address = &reinterpret_cast<const sockaddr_in6*>(entry->ifa_addr)->sin6_addr;
+        if (address && inet_ntop(entry->ifa_addr->sa_family, address, text, sizeof text))
+            result[entry->ifa_name].push_back(text);
+    }
+    freeifaddrs(list);
+    return result;
+}
+
+inline NetworkKind networkKind(const fs::path& path) {
+    const uint64_t type = readUint(path / "type");
+    if (type == ARPHRD_LOOPBACK)
+        return NetworkKind::Loopback;
+    // Only hardware has a device under it; the speed of the others is made up.
+    if (!fs::exists(path / "device"))
+        return NetworkKind::Virtual;
+    if (fs::exists(path / "wireless"))
+        return NetworkKind::Wireless;
+    if (type == ARPHRD_INFINIBAND)
+        return NetworkKind::Infiniband;
+    return type == ARPHRD_ETHER ? NetworkKind::Ethernet : NetworkKind::Unknown;
+}
+
 inline std::string distributionName() {
     std::ifstream file("/etc/os-release");
     std::string prettyName, name, version, line;
@@ -337,13 +411,73 @@ inline std::vector<GpuInfo> gpus() {
             continue;
         GpuInfo gpu{.name = readText(device / "vendor") + ":" + readText(device / "device"),
                     .driver = driverName(device),
-                    .pciAddress = canonical.filename().string()};
+                    .pciAddress = canonical.filename().string(),
+                    .vendorId = readHex(device / "vendor"),
+                    .deviceId = readHex(device / "device"),
+                    .pcie = pcieLink(canonical)};
         if (gpu.driver == "amdgpu")
             gpu.vramBytes = readUint(device / "mem_info_vram_total");
         enrichNvidia(gpu);
         result.push_back(std::move(gpu));
     }
     return result;
+}
+
+inline std::vector<NetworkInfo> networks() {
+    using namespace Linux;
+    std::vector<NetworkInfo> result;
+    const fs::path root = "/sys/class/net";
+    if (!fs::exists(root))
+        return result;
+    auto addresses = interfaceAddresses();
+    for (const auto& entry : fs::directory_iterator(root)) {
+        NetworkInfo network{.name = entry.path().filename().string(),
+                            .kind = networkKind(entry.path()),
+                            .up = readText(entry.path() / "operstate") != "down"};
+        // -1 and an error both mean the kernel does not know.
+        const uint64_t speed = readUint(entry.path() / "speed");
+        if (speed > 0 && network.kind != NetworkKind::Virtual && network.kind != NetworkKind::Loopback)
+            network.megabits = speed;
+        if (const auto found = addresses.find(network.name); found != addresses.end())
+            network.addresses = std::move(found->second);
+        result.push_back(std::move(network));
+    }
+    std::ranges::sort(result, {}, &NetworkInfo::name);
+    return result;
+}
+
+inline std::optional<std::string> localAddressTo(const std::string& address) {
+    sockaddr_storage target{};
+    socklen_t size = sizeof(sockaddr_in);
+    auto* v4 = reinterpret_cast<sockaddr_in*>(&target);
+    auto* v6 = reinterpret_cast<sockaddr_in6*>(&target);
+    if (inet_pton(AF_INET, address.c_str(), &v4->sin_addr) == 1) {
+        v4->sin_family = AF_INET;
+        v4->sin_port = htons(9);
+    } else if (inet_pton(AF_INET6, address.c_str(), &v6->sin6_addr) == 1) {
+        v6->sin6_family = AF_INET6;
+        v6->sin6_port = htons(9);
+        size = sizeof(sockaddr_in6);
+    } else {
+        return std::nullopt;
+    }
+    const int socket = ::socket(target.ss_family, SOCK_DGRAM, 0);
+    if (socket < 0)
+        return std::nullopt;
+    sockaddr_storage local{};
+    socklen_t localSize = sizeof local;
+    const bool routed = connect(socket, reinterpret_cast<sockaddr*>(&target), size) == 0 &&
+        getsockname(socket, reinterpret_cast<sockaddr*>(&local), &localSize) == 0;
+    close(socket);
+    if (!routed)
+        return std::nullopt;
+    char text[INET6_ADDRSTRLEN]{};
+    const void* source = local.ss_family == AF_INET
+        ? static_cast<const void*>(&reinterpret_cast<sockaddr_in*>(&local)->sin_addr)
+        : static_cast<const void*>(&reinterpret_cast<sockaddr_in6*>(&local)->sin6_addr);
+    if (!inet_ntop(local.ss_family, source, text, sizeof text))
+        return std::nullopt;
+    return std::string{text};
 }
 
 inline OsInfo os() {

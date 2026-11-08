@@ -1,6 +1,7 @@
 #include "SystemInfo.hpp"
 
 #include <charconv>
+#include <string>
 #include <string_view>
 
 #include "platform/Platform.hpp"
@@ -35,11 +36,18 @@ void parseVersion(std::string_view version, BuildInfo& info) {
 
 }
 
+static std::string& programVersion() {
+    static std::string version = BUILD_VERSION;
+    return version;
+}
+
+void setProgramVersion(std::string_view version) { programVersion() = version; }
+
 BuildInfo collectBuild() {
     BuildInfo info;
     const auto executable = Platform::executable();
     info.executable = executable.empty() ? "unknown" : executable.filename().string();
-    parseVersion(BUILD_VERSION, info);
+    parseVersion(programVersion(), info);
 
 #if defined(__clang__)
     info.compiler = Compiler::Clang;

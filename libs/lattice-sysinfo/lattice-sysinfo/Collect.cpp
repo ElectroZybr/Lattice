@@ -7,6 +7,10 @@ std::vector<ProcessorInfo> collectCPU() { return Platform::processors(); }
 
 std::vector<GpuInfo> collectGpus() { return Platform::gpus(); }
 
+std::vector<NetworkInfo> collectNetworks() { return Platform::networks(); }
+
+std::optional<std::string> localAddressTo(const std::string& address) { return Platform::localAddressTo(address); }
+
 MemoryInfo collectMemory() { return Platform::memory(); }
 
 OsInfo collectOS() {

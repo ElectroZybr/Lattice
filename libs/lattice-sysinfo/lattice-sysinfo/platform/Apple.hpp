@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstring>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -184,6 +185,10 @@ inline std::vector<GpuInfo> gpus() {
     IOObjectRelease(iterator);
     return result;
 }
+
+// No adapter for interfaces yet: consumers fall back to their defaults.
+inline std::vector<NetworkInfo> networks() { return {}; }
+inline std::optional<std::string> localAddressTo(const std::string&) { return std::nullopt; }
 
 inline OsInfo os() {
     OsInfo info{.name = "macOS " + Apple::text("kern.osproductversion")};

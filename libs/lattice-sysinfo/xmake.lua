@@ -12,7 +12,7 @@ target("lattice-sysinfo")
     if is_plat("linux") then
         add_syslinks("pthread", {public = true})
     elseif is_plat("windows", "mingw") then
-        add_syslinks("advapi32", "dxgi", "powrprof")
+        add_syslinks("advapi32", "dxgi", "powrprof", "setupapi", "cfgmgr32", "iphlpapi", "ws2_32")
     elseif is_plat("macosx") then
         add_frameworks("IOKit", "CoreFoundation")
     end

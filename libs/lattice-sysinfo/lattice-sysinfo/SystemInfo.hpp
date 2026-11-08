@@ -1,7 +1,10 @@
 #pragma once
 
 #include <cstdint>
+#include <iterator>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <lattice-sysinfo/Visibility.hpp>
@@ -143,6 +146,22 @@ struct MemoryInfo {
     std::vector<MemoryNodeInfo> nodes;
 };
 
+/// What a PCIe link can carry: the lesser of the device and its slot. The speed in use is not
+/// it: a resting GPU drops it.
+struct PcieLink {
+    uint32_t generation = 0;
+    uint32_t lanes = 0;
+
+    /// Bytes per second each way after the line code, before the protocol's own overhead.
+    double bytesPerSecond() const noexcept {
+        static constexpr double transfers[] = {2.5e9, 5e9, 8e9, 16e9, 32e9, 64e9};
+        if (generation == 0 || generation > std::size(transfers))
+            return 0;
+        const double code = generation <= 2 ? 8.0 / 10.0 : 128.0 / 130.0;
+        return transfers[generation - 1] * code / 8.0 * lanes;
+    }
+};
+
 struct GpuInfo {
     std::string name;
     std::string driver;
@@ -150,6 +169,31 @@ struct GpuInfo {
     std::string computeInfo;
 
     uint64_t vramBytes = 0;
+
+    /// PCI ids, 0 when unknown: the same a graphics API reports for its adapter.
+    uint32_t vendorId = 0;
+    uint32_t deviceId = 0;
+    std::optional<PcieLink> pcie;
+};
+
+enum class NetworkKind : uint8_t {
+    Unknown,
+    Ethernet,
+    Wireless,
+    Infiniband,
+    /// No hardware under it: VPN, bridge, container.
+    Virtual,
+    Loopback
+};
+
+struct NetworkInfo {
+    std::string name;
+    NetworkKind kind = NetworkKind::Unknown;
+    bool up = false;
+    /// Nominal speed of the link; none when the system does not say or the interface is virtual.
+    std::optional<uint64_t> megabits;
+    /// Numeric IPv4 and IPv6.
+    std::vector<std::string> addresses;
 };
 
 struct MachineInfo {
@@ -159,12 +203,20 @@ struct MachineInfo {
     MemoryInfo memory;
     std::vector<ProcessorInfo> processors;
     std::vector<GpuInfo> gpus;
+    std::vector<NetworkInfo> networks;
 };
 
 LT_SYSINFO std::vector<ProcessorInfo> collectCPU();
 LT_SYSINFO std::vector<GpuInfo> collectGpus();
+/// Interfaces change while a program runs: collect anew when it matters.
+LT_SYSINFO std::vector<NetworkInfo> collectNetworks();
+/// The local address the system would send from to this numeric address: which interface
+/// reaches it. Nothing is sent. None for an address that is not numeric or has no route.
+LT_SYSINFO std::optional<std::string> localAddressTo(const std::string& address);
 LT_SYSINFO MemoryInfo collectMemory();
 LT_SYSINFO OsInfo collectOS();
+/// The version of the program: it knows it, this library does not. collectBuild reports it.
+LT_SYSINFO void setProgramVersion(std::string_view version);
 LT_SYSINFO BuildInfo collectBuild();
 
 inline MachineInfo collectMachineInfo() {
@@ -175,6 +227,7 @@ inline MachineInfo collectMachineInfo() {
     info.processors = collectCPU();
     info.memory = collectMemory();
     info.gpus = collectGpus();
+    info.networks = collectNetworks();
 
     return info;
 }

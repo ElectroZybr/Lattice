@@ -168,7 +168,7 @@ std::vector<CacheGroup> groupCaches(const ProcessorInfo& cpu) {
 
 }
 
-inline TextFormatter format(const MachineInfo& info) {
+inline TextFormatter format(const MachineInfo& info, const TextTheme& theme = TextTheme::system()) {
     TextFormatter output;
     bool first = true;
 
@@ -180,19 +180,21 @@ inline TextFormatter format(const MachineInfo& info) {
     };
 
     TextFormatter system = TextFormatter::format(
+        theme,
         "<a2><b>{:<9}<//> <light>{}</>",
         "System",
         info.os.name
     );
 
     if (!info.os.kernel.empty())
-        system += TextFormatter::format("  <mut>kernel: {}</>", info.os.kernel);
+        system += TextFormatter::format(theme, "  <mut>kernel: {}</>", info.os.kernel);
 
     if (!info.os.architecture.empty())
-        system += TextFormatter::format("  <mut>arch: {}</>", info.os.architecture);
+        system += TextFormatter::format(theme, "  <mut>arch: {}</>", info.os.architecture);
 
     appendLine(system);
     appendLine(TextFormatter::format(
+        theme,
         "<a2><b>{:<9}<//> <light>{} {}</>  "
         "<mut>compiler:</> <light>{} {}</>  <mut>type:</> <light>{}</>",
         "Build",
@@ -211,6 +213,7 @@ inline TextFormatter format(const MachineInfo& info) {
         buildTypeName(info.build.build)
     ));
     appendLine(TextFormatter::format(
+        theme,
         "<a2><b>{:<9}<//> <light>{}</> <mut>total,</> "
         "<light>{}</> <mut>available</>",
         "Memory",
@@ -220,7 +223,8 @@ inline TextFormatter format(const MachineInfo& info) {
 
     for (const MemoryNodeInfo& node : info.memory.nodes) {
         appendLine(TextFormatter::format(
-            "  <mut>NUMA {}</>  <light>{}</>  <mut>CPUs</>={}",
+            theme,
+            "  <mut>NUMA {}</>  <light>{}</>  <mut>CPUs</>=<light>{}</>",
             node.id,
             formatBytes(node.totalBytes),
             formatCpuList(node.logicalCpus)
@@ -234,6 +238,7 @@ inline TextFormatter format(const MachineInfo& info) {
             threads += core.logicalCpus.size();
 
         appendLine(TextFormatter::format(
+            theme,
             "<a2><b>CPU {:<5}<//> <light>{}</>  <mut>{} cores / "
             "{} threads</>  <light>{}-{}</>",
             cpu.id,
@@ -252,6 +257,7 @@ inline TextFormatter format(const MachineInfo& info) {
                 std::format("L{}{}", cache.level, type);
 
             appendLine(TextFormatter::format(
+                theme,
                 "  <mut>{:<7} <light>{:<10} x{:<2}</>  {:>2}-way  line={:<2} B  "
                 "<mut>CPUs</>={}</>",
                 cacheName,
@@ -267,6 +273,7 @@ inline TextFormatter format(const MachineInfo& info) {
     for (size_t i = 0; i < info.gpus.size(); ++i) {
         const GpuInfo& gpu = info.gpus[i];
         TextFormatter line = TextFormatter::format(
+            theme,
             "<a2><b>GPU {:<5}<//> <light>{}</>  <mut>driver={} pci={}</>",
             i,
             gpu.name,
@@ -276,11 +283,36 @@ inline TextFormatter format(const MachineInfo& info) {
 
         if (gpu.vramBytes) {
             line += TextFormatter::format(
-                "  <mut>VRAM</>={}",
+                theme,
+                "  <mut>VRAM</>=<light>{}</>",
                 formatBytes(gpu.vramBytes)
             );
         }
 
+        if (gpu.pcie) {
+            line += TextFormatter::format(
+                theme,
+                "  <mut>PCIe</> <light>{}.0 x{}</>",
+                gpu.pcie->generation,
+                gpu.pcie->lanes
+            );
+        }
+
+        appendLine(line);
+    }
+
+    for (const NetworkInfo& network : info.networks) {
+        if (network.kind == NetworkKind::Virtual || network.kind == NetworkKind::Loopback || !network.up)
+            continue;
+        const char* kind = network.kind == NetworkKind::Ethernet ? "ethernet"
+            : network.kind == NetworkKind::Wireless              ? "wireless"
+            : network.kind == NetworkKind::Infiniband            ? "infiniband"
+                                                                 : "unknown";
+        TextFormatter line = TextFormatter::format(theme, "<a2><b>Net<//>       <light>{}</>  <mut>{}</>", network.name, kind);
+        if (network.megabits)
+            line += TextFormatter::format(theme, "  <light>{} Mb/s</>", *network.megabits);
+        for (const std::string& address : network.addresses)
+            line += TextFormatter::format(theme, "  <mut>{}</>", address);
         appendLine(line);
     }
 
